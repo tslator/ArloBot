@@ -1,0 +1,17 @@
+ArloBotPropInterface.c
+message.c -> message.c
+odom.c -> odom.c
+motiondetect.c -> motiondetect.c
+infrared.c -> infrared.c
+ultrasonic.c -> ultrasonic.c
+sensormux.c -> sensormux.c
+newmcp3208.c -> newmcp3208.c
+HCSR04.c -> HCSR04.c
+>compiler=C
+>memtype=cmm main ram compact
+>optimize=-Os
+>-m32bit-doubles
+>-fno-exceptions
+>defs::-std=c99
+>-lm
+>BOARD::ACTIVITYBOARD
