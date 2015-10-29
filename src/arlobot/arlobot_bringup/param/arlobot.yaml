@@ -31,15 +31,19 @@ usbLeftMotorRelayLabel: "LeftMotor"
 usbRightMotorRelayLabel: "RightMotor"
 # Set monitorACconnection to False if you do not want arlobot_safety to monitor the computer's
 # power connection. This works for my laptop, but it may not work for your situation.
-monitorACconnection: True
+monitorACconnection: False
 # Set ignoreProximity to have robot ignore the proximity sensors
 # and simply operate 100% under ROS control.
 # This should also work if changed on the fly.
-ignoreProximity: False
+ignoreProximity: True
 # If you have Cliff sensors, you can use this to tell the Activity Board
 # to ignore them.
-ignoreCliffSensors: False
+ignoreCliffSensors: True
 # Use this to tell the Activity Board to ignore JUST the IR sensors,
 # while still utilizing the PING sensors
 # NOTE this will not ignore the IR Cliff Sensors. Use ignoreCliffSensors to do that.
-ignoreIRSensors: False
+ignoreIRSensors: True
+
+
+# Added to disable arlobot_safety
+safetyEnabled: False

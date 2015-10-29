@@ -15,7 +15,7 @@
     <rosparam file="$(env HOME)/.arlobot/arlobot.yaml" command="load" />
   </node>
 
-  <!-- Remember to boradcoast base_link to odom Transform from propellerbot_node when robot_pose_ekf is not used -->
+  <!-- Remember to broadcast base_link to odom Transform from propellerbot_node when robot_pose_ekf is not used -->
 
   <!-- velocity commands multiplexer -->
   <node pkg="nodelet" type="nodelet" name="mobile_base_nodelet_manager" args="manager"/>
