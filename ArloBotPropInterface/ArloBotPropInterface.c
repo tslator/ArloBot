@@ -436,6 +436,8 @@ static void Init()
     OpState.max_forward_speed = DEFAULT_MAX_SPEED;
     OpState.max_reverse_speed = DEFAULT_MAX_SPEED;
     
+    OpState.left_motor_power = 4.69;
+    OpState.right_motor_power = 4.69;
     
     MSG_Init();
     ODOM_Init();

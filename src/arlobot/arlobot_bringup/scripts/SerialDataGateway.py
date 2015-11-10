@@ -8,7 +8,14 @@ import threading
 import serial
 from cStringIO import StringIO
 import time
-import rospy
+try:
+    import rospy
+except ImportError:
+    class ROSPY:
+        def loginfo(self, data):
+            print data
+
+    rospy = ROSPY()
 
 def _OnLineReceived(line):
     print line

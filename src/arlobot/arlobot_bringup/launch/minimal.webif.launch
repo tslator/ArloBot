@@ -1,0 +1,4 @@
+<launch>
+    <include file="$(find arlobot_webif)/launch/arlobot_webif.launch"/>
+    <include file="$(find arlobot_bringup)/launch/minimal.launch" />
+</launch>

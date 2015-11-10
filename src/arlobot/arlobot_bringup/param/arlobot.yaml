@@ -43,7 +43,5 @@ ignoreCliffSensors: True
 # while still utilizing the PING sensors
 # NOTE this will not ignore the IR Cliff Sensors. Use ignoreCliffSensors to do that.
 ignoreIRSensors: True
-
-
 # Added to disable arlobot_safety
-safetyEnabled: False
+safetyEnabled : False

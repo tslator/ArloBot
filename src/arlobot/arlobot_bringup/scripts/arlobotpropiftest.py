@@ -30,7 +30,7 @@ def ShowOdometry():
 def DoMove(vel):
     lin_vel, ang_vel = vel.split(',')
     move = SerialMessage(SerialMessage.ACTION_MOVE_COMMAND, [float(lin_vel), float(ang_vel)])
-    dataReceiver.Write(move.data)
+    dataReceiver.Write(move.msg)
 
 def Test(num):
     if num == 1:
@@ -81,11 +81,11 @@ def _handle_received_line(line):
 
             if not msg.drive_geometry_received:
                 print("Sending drive geometry")
-                dataReceiver.Write(drive_geometry.data)
+                dataReceiver.Write(drive_geometry.msg)
 
             if not msg.op_state_received:
                 print("Sending operational state")
-                dataReceiver.Write(operational_state.data)
+                dataReceiver.Write(operational_state.msg)
 
             if not configured:
                 if msg.drive_geometry_received:
@@ -118,7 +118,7 @@ def main():
     global configured
 
     #dataReceiver = SerialDataGateway("COM3", 115200, _handle_received_line)
-    dataReceiver = SerialDataGateway("/dev/ttyUSB2", 115200, _handle_received_line)
+    dataReceiver = SerialDataGateway("/dev/ttyUSB0", 115200, _handle_received_line)
     dataReceiver.Start()
 
     DoMove("0.0,0.0")

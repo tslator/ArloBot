@@ -1,0 +1,5 @@
+<launch>
+  <include file="$(find rosbridge_server)/launch/rosbridge_websocket.launch" />
+  <node pkg="arlobot_webif" type="arlobot_webserver.py" name="arlobot_webserver" respawn="true" />
+  <node pkg="arlobot_webif" type="XlateJoystickToVelocity.py" name="XlateJoystickToVelocity" respawn="true" />
+</launch>

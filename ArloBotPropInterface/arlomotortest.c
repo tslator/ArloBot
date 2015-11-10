@@ -4,7 +4,7 @@
 */
 #include "simpletools.h"                      // Include simple tools
 #include "arlodrive.h"
-#define SPEED (100)
+#define SPEED (50)
 int main()                                    // Main function
 {
     // Add startup code here.

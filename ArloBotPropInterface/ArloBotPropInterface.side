@@ -7,6 +7,8 @@ ultrasonic.c -> ultrasonic.c
 sensormux.c -> sensormux.c
 newmcp3208.c -> newmcp3208.c
 HCSR04.c -> HCSR04.c
+arlodrive.h -> ../ArloBotParallaxLibraries/libarlodrive/arlodrive.h
+-L ./../ArloBotParallaxLibraries/libarlodrive
 >compiler=C
 >memtype=cmm main ram compact
 >optimize=-Os
