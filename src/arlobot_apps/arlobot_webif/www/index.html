@@ -127,7 +127,8 @@
         function startRos() {
             
             ros = new ROSLIB.Ros({
-                url : 'ws://192.168.192.1:9090'
+                //url : 'ws://192.168.192.1:9090'
+                url: 'ws://10.10.0.1:9090'
             });
             
             ros.on('connection', function() {
