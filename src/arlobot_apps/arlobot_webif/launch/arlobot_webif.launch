@@ -1,5 +1,7 @@
 <launch>
   <include file="$(find rosbridge_server)/launch/rosbridge_websocket.launch" />
+  <include file="$(find rbx1_vision)/launch/usb_cam.launch"/>
+  <node pkg="web_video_server" type="web_video_server" name="web_video_server" args="_port:=8181" respawn="true"/>
   <node pkg="arlobot_webif" type="arlobot_webserver.py" name="arlobot_webserver" respawn="true" />
   <node pkg="arlobot_webif" type="XlateJoystickToVelocity.py" name="XlateJoystickToVelocity" respawn="true" />
 </launch>
