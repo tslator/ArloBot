@@ -30,7 +30,6 @@ class XlateJoystickToVelocity:
         rospy.spin()
 
     def JoystickCallback(self, data):
-
         if rospy.Time.now() - self._last_time > rospy.Duration(self._pub_rate):
 
             rospy.loginfo("Received joystick msg: " + str(data))

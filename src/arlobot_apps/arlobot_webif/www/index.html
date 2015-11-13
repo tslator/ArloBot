@@ -35,7 +35,6 @@
             border: 1px solid rgb(107, 35, 35);
             border-radius: 5px;
         }
-        
         #camera {
             display: block;
             margin-left: auto;
@@ -67,7 +66,6 @@
         var motor = { x : 0.0, y : 0.0 };
         var pan_tilt = { pan : 0.0, tilt : 0.0 };
         var ros;
-        var cws;
 
         
         function layoutControls() {
@@ -127,7 +125,6 @@
         function startRos() {
             
             ros = new ROSLIB.Ros({
-                //url : 'ws://192.168.192.1:9090'
                 url: 'ws://10.10.0.1:9090'
             });
             
@@ -153,20 +150,6 @@
         
             startRos();
 
-            //webSocketPort = window.location.port;
-            //if ( webSocketPort == "" )
-            //{
-            //   webSocketPort = "80";
-            //}
-            //cameraPort = ( 8000 + parseInt( webSocketPort ) ).toString();
-             
-            //webSocketURL = "http://" + window.location.hostname + ":" + webSocketPort + "/control";
-            //camera_url = "http://" + window.location.hostname  + ":" + cameraPort + "/?action=stream";
-            //cws = new SockJS( webSocketURL );
-            //var shutdownComplete = false;
-            
-            //$("#camera").attr( "src", camera_url );
-               
             $('#motor_stick').joystick({
                 xSnap: true,
                 ySnap: true,
@@ -229,46 +212,30 @@
             $('#motor_stick').joystick( 'value', 0.0, 0.0 );
             $('#pan_tilt_stick').joystick( 'value', 0.0, 0.0 );
             $( "#btnShutdown" ).click( function() {
-                var SHUTDOWN_TIME_MS = 25000;
+                //var SHUTDOWN_TIME_MS = 25000;
              
-                if ( socket.readyState == SockJS.OPEN ) 
-                {
-                    socket.send( "Shutdown" );
-                }
-                $( "#shutdownProgress" ).removeAttr('style');
-                $( "#shutdownText" ).text( "Shutting Down" );
+                //if ( socket.readyState == SockJS.OPEN ) 
+                //{
+                //    socket.send( "Shutdown" );
+                //}
+                //$( "#shutdownProgress" ).removeAttr('style');
+                //$( "#shutdownText" ).text( "Shutting Down" );
                 
-                var modalShutdownDialog = $( "#modalShutdownDialog" );
-                modalShutdownDialog.css( "opacity", 1 );
-                modalShutdownDialog.css( "top", "10%" );
-                modalShutdownDialog.css( "visibility", "visible" );
+                //var modalShutdownDialog = $( "#modalShutdownDialog" );
+                //modalShutdownDialog.css( "opacity", 1 );
+                //modalShutdownDialog.css( "top", "10%" );
+                //modalShutdownDialog.css( "visibility", "visible" );
                 
-                // Wait for the Pi to shutdown. The wait time is determined experimentally with an extra couple of seconds
+                // Wait for Arlobot to shutdown. The wait time is determined experimentally with an extra couple of seconds
                 // added on for safety
-                setTimeout( function() {
-                    //$( "#shutdownProgress" ).css( "visibility", "hidden" );
-                    //$( "#shutdownText" ).text( "It is now safe to switch off the power to the Pi" );
-                    //shutdownComplete = true;
-                }, SHUTDOWN_TIME_MS );
+                //setTimeout( function() {
+                    // Nothing to do right now
+		//}, SHUTDOWN_TIME_MS );
             } );
             
             // Add a periodic function to keep the camera and socket alive
             setInterval( function() {
-                
-                //if ( cws.readyState == SockJS.OPEN ) {
-                //    cws.send( "StartStreaming" );
-                    //$("#camera").attr( "src", camera_url );
-                    
-                //    if ( shutdownComplete )
-                //    {
-                //        $( "#modalShutdownDialog" ).removeAttr('style');    // Reset the shutdown dialog by removing the style attribute added by jQuery
-                //        shutdownComplete = false;
-                //    }
-                    
-                //} else {
-                //    cws = new SockJS( socket_url );
-                //}
-                
+               // Nothing to do right now 
             }, 1000 );
             
             layoutControls();
@@ -279,7 +246,9 @@
   </head>
 
   <body>
-    <p><img id="camera" src=""/></p>
+    <p>
+	<img id="camera" src="http://10.10.0.1:8181/stream?topic=/camera/rgb/image_raw">
+    </p>
     
     <div class="joystick" id="motor_stick">
       <div class="inner_circle"></div>
@@ -290,7 +259,7 @@
       <div class="inner_circle"></div>
       <div class="handle"></div>
     </div>
-    
+    <!--
     <button id="btnShutdown" type="button" class="btn">Shutdown</button>
     
     <div id="modalShutdownDialog">
@@ -303,6 +272,6 @@
         </div>
         <div class="overlay"></div>
     </div>
-    
+    -->
   </body>
 </html>
