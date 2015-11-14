@@ -2,7 +2,6 @@
 #include "infrared.h"
 
 
-#define MAX_NUM_IR_SENSORS (8)
 #define MCP3208_SENSOR
 
 #if defined (MCP3208_SENSOR)
