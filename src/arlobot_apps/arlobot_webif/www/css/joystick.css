@@ -1,0 +1,26 @@
+.joystick {
+    position: relative;
+    width: 230px;
+    height: 230px;
+    -webkit-border-radius: 100%;
+    -moz-border-radius: 100%;
+    border-radius: 100%; 
+    /*background-color: #eee;*/
+}
+.joystick .inner_circle {
+    position: absolute;
+    width: 100px;
+    height: 100px;
+    -webkit-border-radius: 100%;
+    -moz-border-radius: 100%;
+    border-radius: 100%; 
+    background-color: #ccc;
+}
+.joystick .handle {
+    position: absolute;
+    width: 24px;
+    height: 24px;
+    background-color: rgb(201, 44, 44);
+    border: 1px solid rgb(107, 35, 35);
+    border-radius: 5px;
+}

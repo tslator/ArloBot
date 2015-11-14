@@ -1,4 +1,6 @@
 arlomotortest.c
+arlodrive.h -> ../ArloBotParallaxLibraries/libarlodrive/arlodrive.h
+-L ./../ArloBotParallaxLibraries/libarlodrive
 >compiler=C
 >memtype=cmm main ram compact
 >optimize=-Os

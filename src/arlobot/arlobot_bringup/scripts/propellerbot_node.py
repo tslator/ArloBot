@@ -41,6 +41,7 @@ from std_msgs.msg import Bool
 from arlobot_msgs.msg import usbRelayStatus, arloStatus, arloSafety
 from arlobot_msgs.srv import FindRelay, ToggleRelay
 
+
 from SerialDataGateway import SerialDataGateway
 from OdomStationaryBroadcaster import OdomStationaryBroadcaster
 from SerialMessage import SerialMessage, SerialMessageError
@@ -58,11 +59,13 @@ class PropellerComm(object):
         self.r = rospy.Rate(1) # 1hz refresh rate
         self._Counter = 0  # For Propeller code's _HandleReceivedLine and _write_serial
         self._motorsOn = False  # Set to 1 if the motors are on, used with USB Relay Control board
+        self._motorsOn = True
         self._safeToGo = False  # Use arlobot_safety to set this
         self._safeToGo = True
         self._SafeToOperate = False  # Use arlobot_safety to set this
         self._SafeToOperate = True
         self._acPower = True # Track AC power status internally
+        self._acPower = False
         self._unPlugging = False # Used for when arlobot_safety tells us to "UnPlug"!
         self._wasUnplugging = False # Track previous unplugging status for motor control
         self._SwitchingMotors = False  # Prevent overlapping calls to _switch_motors
@@ -85,6 +88,9 @@ class PropellerComm(object):
         self.ignore_ir_sensors = rospy.get_param("~ignoreIRSensors", False);
         self.ignore_floor_sensors = rospy.get_param("~ignoreFloorSensors", False);
         self.robotParamChanged = False
+        self._op_state_set = False
+
+
         # Get motor relay numbers for use later in _HandleUSBRelayStatus if USB Relay is in use:
         self.relayExists = rospy.get_param("~usbRelayInstalled", False)
         if self.relayExists:
@@ -108,12 +114,15 @@ class PropellerComm(object):
             rospy.Subscriber("arlobot_usbrelay/usbRelayStatus", usbRelayStatus,
                              self._handle_usb_relay_status)  # Safety Shutdown
         # Subscriptions
-        rospy.Subscriber("cmd_vel", Twist, self._handle_velocity_command)  # Is this line or the below bad redundancy?
-        rospy.Subscriber("arlobot_safety/safetyStatus", arloSafety, self._safety_shutdown)  # Safety Shutdown
+        #rospy.Subscriber("cmd_vel", Twist, self._handle_velocity_command)  # Is this line or the below bad redundancy?
+        rospy.Subscriber("mobile_base/commands/velocity", Twist, self._handle_velocity_command)
+        #rospy.Subscriber("arlobot_safety/safetyStatus", arloSafety, self._safety_shutdown)  # Safety Shutdown
+
         # Publishers
         self._SerialPublisher = rospy.Publisher('serial', String, queue_size=10)
         self._pirPublisher = rospy.Publisher('~pirState', Bool, queue_size=1)  # for publishing PIR status
         self._arlo_status_publisher = rospy.Publisher('arlo_status', arloStatus, queue_size=1)
+        self._cmd_vel_publisher = rospy.Publisher('/cmd_vel', Twist, queue_size=10)
         # IF the Odometry Transform is done with the robot_pose_ekf do not publish it,
         # but we are not using robot_pose_ekf, because it does nothing for us if you don't have a full IMU!
         self._OdometryTransformBroadcaster = tf.TransformBroadcaster()  # REMOVE this line if you use robot_pose_ekf
@@ -129,7 +138,7 @@ class PropellerComm(object):
         baud_rate = int(rospy.get_param("~baudRate", 115200))
         rospy.loginfo("Starting with serial port: " + port + ", baud rate: " + str(baud_rate))
         self._SerialDataGateway = SerialDataGateway(port, baud_rate, self._handle_received_line)
-        self._OdomStationaryBroadcaster = OdomStationaryBroadcaster(self._broadcast_static_odometry_info)
+
 
     def _handle_received_line(self, line):  # This is Propeller specific
         """
@@ -164,13 +173,17 @@ class PropellerComm(object):
                     rospy.loginfo("Need to config operational state")
                     self._initialize_op_state(msg)
 
-                else:
+                elif not self._op_state_set and msg.drive_geometry_received and msg.op_state_received:
+                    self._op_state_set = True
+
+                elif self._op_state_set:
                     self._broadcast_arlo_status(msg)
         elif msg.msg_class == SerialMessage.DEBUG_CLASS:
             pass
         else:
             # Log something about this bad message
             rospy.logwarn("Unknown message class: " + str(msg))
+
 
     def _broadcast_arlo_status(self, msg):
         arlo_status = arloStatus()
@@ -213,6 +226,7 @@ class PropellerComm(object):
         arlo_status.floorObstacle = msg.floor_obstacle_detected
         self._arlo_status_publisher.publish(arlo_status)
 
+
     def _handle_usb_relay_status(self, status):
         """
         Update motor status based on real data from arlobot_usbrelay topic
@@ -229,11 +243,13 @@ class PropellerComm(object):
             else:
                 self._motorsOn = False
 
+
     def _safety_shutdown(self, status):
         """
         Shut down the motors if the SafeToOperate topic goes false.
         Set unPlugging variable to allow for safe unplug operation.
         """
+        rospy.loginfo("_safety_shutdown - " + str(status))
         self._unPlugging = status.unPlugging
         self._SafeToOperate = status.safeToOperate
         self._safeToGo = status.safeToGo
@@ -248,6 +264,7 @@ class PropellerComm(object):
             if self._motorsOn:
                 rospy.loginfo("Safety Shutdown initiated")
                 self._reset_serial_connection()
+
 
     def _reset_serial_connection(self):
         if self._motorsOn:
@@ -267,6 +284,7 @@ class PropellerComm(object):
         rospy.loginfo("5 second pause to let Activity Board settle after serial port reset . . .")
         time.sleep(5)  # Give it time to settle.
         self.startSerialPort()
+
 
     def _broadcast_odometry_info(self, msg):
         """
@@ -348,6 +366,7 @@ class PropellerComm(object):
         #                          0, 0, 0, 0, 0, 1e3]
 
         self._OdometryPublisher.publish(odometry)
+
 
     def _sensor_handling(self, msg):
         '''
@@ -685,10 +704,13 @@ class PropellerComm(object):
         self._SerialPublisher.publish(String(str(self._Counter) + ", out: " + message))
         self._SerialDataGateway.Write(message)
 
+
     def start(self):
-        self._OdomStationaryBroadcaster.Start()
         self.startSerialPort()
         self._serialTimeout = 0
+        while not self._op_state_set:
+            pass
+
 
     def startSerialPort(self):
         rospy.loginfo("Serial Data Gateway starting . . .")
@@ -712,6 +734,7 @@ class PropellerComm(object):
         rospy.loginfo("Serial Data Gateway started.")
         self._serialAvailable = True
 
+
     def stop(self):
         """
         Called by ROS on shutdown.
@@ -734,31 +757,36 @@ class PropellerComm(object):
         except AttributeError:
             rospy.loginfo("Attempt to start nonexistent Serial device.")
         rospy.loginfo("_SerialDataGateway stopped.")
-        self._OdomStationaryBroadcaster.Stop()
+
 
     def _handle_velocity_command(self, twist_command):  # This is Propeller specific
         """ Handle movement requests. """
         # NOTE: turtlebot_node has a lot of code under its cmd_vel function
         # to deal with maximum and minimum speeds,
         # which are dealt with in ArloBot on the Activity Board itself in the Propeller code.
+        #rospy.loginfo("_handle_velocity_command")
+        if not self._op_state_set:
+            return
         if self._clear_to_go("forGeneralUse"):
-
             v = twist_command.linear.x  # m/s
             omega = twist_command.angular.z  # rad/s
-            # rospy.logdebug("Handling twist command: " + str(v) + "," + str(omega))
+            rospy.logdebug("Handling twist command: " + str(v) + "," + str(omega))
 
             msg = SerialMessage(SerialMessage.ACTION_MOVE_COMMAND, [v, omega])
             self._write_serial(msg.msg)
         elif self._clear_to_go("to_stop"):
+            rospy.loginfo("_clear_to_go - to_stop")
             # WARNING! If you change this check the buffer length in the Propeller C code!
             msg = SerialMessage(SerialMessage.ACTION_MOVE_COMMAND, [0.0,0.0])
             rospy.logdebug("Sending speed command message: " + msg.msg)
             self._write_serial(msg.msg)
 
+
     def _initialize_drive_geometry(self):
         rospy.loginfo("Sending drive geometry params message")
         msg = SerialMessage(SerialMessage.CONFIG_DRIVE_GEOMETRY_COMMAND, [self.track_width, self.distance_per_count])
         self._write_serial(msg.msg)
+
 
     def _initialize_op_state(self, msg):
         """ Send parameters from YAML file to Propeller board. """
@@ -793,59 +821,6 @@ class PropellerComm(object):
             self._pirPublisher.publish(msg.motion_detected)
 
 
-    def _broadcast_static_odometry_info(self):
-        """
-        Broadcast last known odometry and transform while propeller board is offline
-        so that ROS can continue to track status
-        Otherwise things like gmapping will fail when we loose our transform and publishing topics
-        """
-        if not self._motorsOn:  # Use motor status to decide when to broadcast static odometry:
-            x = self.lastX
-            y = self.lastY
-            theta = self.lastHeading
-            vx = 0  # If the motors are off we will assume the robot is still.
-            omega = 0  # If the motors are off we will assume the robot is still.
-
-            quaternion = Quaternion()
-            quaternion.x = 0.0
-            quaternion.y = 0.0
-            quaternion.z = sin(theta / 2.0)
-            quaternion.w = cos(theta / 2.0)
-
-            ros_now = rospy.Time.now()
-
-            # First, we'll publish the transform from frame odom to frame base_link over tf
-            # Note that sendTransform requires that 'to' is passed in before 'from' while
-            # the TransformListener' lookupTransform function expects 'from' first followed by 'to'.
-            # This transform conflicts with transforms built into the Turtle stack
-            # http://wiki.ros.org/tf/Tutorials/Writing%20a%20tf%20broadcaster%20%28Python%29
-            # This is done in/with the robot_pose_ekf because it can integrate IMU/gyro data
-            # using an "extended Kalman filter"
-            # REMOVE this "line" if you use robot_pose_ekf
-            self._OdometryTransformBroadcaster.sendTransform(
-                (x, y, 0),
-                (quaternion.x, quaternion.y, quaternion.z, quaternion.w),
-                ros_now,
-                "base_footprint",
-                "odom"
-            )
-
-            # next, we will publish the odometry message over ROS
-            odometry = Odometry()
-            odometry.header.frame_id = "odom"
-            odometry.header.stamp = ros_now
-            odometry.pose.pose.position.x = x
-            odometry.pose.pose.position.y = y
-            odometry.pose.pose.position.z = 0
-            odometry.pose.pose.orientation = quaternion
-
-            odometry.child_frame_id = "base_link"
-            odometry.twist.twist.linear.x = vx
-            odometry.twist.twist.linear.y = 0
-            odometry.twist.twist.angular.z = omega
-
-            self._OdometryPublisher.publish(odometry)
-
     def _switch_motors(self, state):
         """ Switch Motors on and off as needed. """
         # Relay control was moved to its own package
@@ -872,8 +847,13 @@ class PropellerComm(object):
         else:  # If no automated motor control exists, just set the state blindly.
             self._motorsOn = state
 
+
     def watchDog(self):
         while not rospy.is_shutdown():
+
+            #msg = SerialMessage(SerialMessage.ACTION_MOVE_COMMAND, [0.5, 0.0])
+            #self._write_serial(msg.msg)
+
             if self._serialAvailable:
                 self._serialTimeout += 1
             else:
@@ -882,6 +862,7 @@ class PropellerComm(object):
             if self._serialTimeout > 19:
                 rospy.loginfo("Watchdog Timeout Reset initiated")
                 self._reset_serial_connection()
+
             if self._unPlugging or self._wasUnplugging:
                 self.UnplugRobot()
 
@@ -947,7 +928,9 @@ class PropellerComm(object):
 
             self.r.sleep()
 
+
     def UnplugRobot(self):
+        rospy.loginfo("UnplugRobot")
         if self._unPlugging and \
                 not self._wasUnplugging and \
                 self._clear_to_go("forUnplugging"):
@@ -984,6 +967,7 @@ class PropellerComm(object):
         return_value = False
 
         return True
+        rospy.loginfo(str(self._serialAvailable) + "," + str(self._SafeToOperate) + "," + str(self._safeToGo) + "," + str(self._motorsOn) + "," + str(self._leftMotorPower) + "," + str(self._rightMotorPower))
 
         # Required for all operations
         if self._serialAvailable and \
@@ -993,6 +977,8 @@ class PropellerComm(object):
            self._leftMotorPower and \
            self._rightMotorPower:
                return_value = True
+
+        rospy.loginfo(str(self._acPower) + "," + str(self._wasUnplugging))
         # Negations by use case
         if forWhat == "forUnplugging":
             # Unpugging should only happen if AC is connected
@@ -1017,6 +1003,7 @@ class PropellerComm(object):
                 return_value = False
         return return_value
 
+
 if __name__ == '__main__':
 
     propellercomm = PropellerComm()
@@ -1025,7 +1012,6 @@ if __name__ == '__main__':
         propellercomm.start()
         rospy.loginfo("Propellerbot_node has started.")
         propellercomm.watchDog()
-        #rospy.spin()
 
     except rospy.ROSInterruptException:
         propellercomm.stop()
