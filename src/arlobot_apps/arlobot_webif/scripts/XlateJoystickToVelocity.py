@@ -16,7 +16,10 @@ class XlateJoystickToVelocity:
     def __init__(self):
         rospy.init_node("XlateJoystickToVelocity")
 
-        self._pub_rate = rospy.get_param("~pub_rate", 0.067)
+        # Experimentally determined that 0.1 is a good rate for sending html joy stick commands.
+        # Any faster and the message handler on the Propeller Activity board gets overwhelmed and
+        # 0.1 seems more than sufficient for web control.
+        self._pub_rate = rospy.get_param("~pub_rate", 0.1)
         self._linear_scale = rospy.get_param("~linear_scale", 1)
         self._angular_scale = rospy.get_param("~angular_scale", 1)
         self._last_time = rospy.Time.now()
