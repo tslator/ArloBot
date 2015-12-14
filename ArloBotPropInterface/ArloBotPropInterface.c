@@ -22,6 +22,9 @@
 #define DIR_SENSOR_STATUS_TIME (1000)
 #define US_SENSOR_STATUS_TIME (100)
 
+
+#define TURN_ON_MOTORS() set_output(MOTORS_RELAY, MOTORS_ON)
+
 //-------------------------------------------------------------------------------------------------
 //  Messaging
 //-------------------------------------------------------------------------------------------------
@@ -483,6 +486,17 @@ static void Start()
     MessageStart();
     OdomStart();
     SensorsStart();
+
+    // The Parallax motor driver modules are a bit finicky about power on and sensing the appropriate
+    // signal from the Arlo motor drivers.  Experimentally, it has been determined that power shouldn't
+    // be applied to the motor driver modules until about 2 seconds after the Activity board has been 
+    // fired up.  So, we wait for 2 seconds and then turn on the relay that controls the motors.
+    // 
+    // Note: We have current/voltage sensing.  If the sensors are placed between the motor power switch
+    // and the relay we would know if the motor switch is on or off.  If its off, then notify the user
+    // to turn it on.
+    pause(2000);
+    TURN_ON_MOTORS();
 }
 
 static float CalcHeading(IMU_STATE* state)
@@ -566,44 +580,23 @@ int main()
     Init();
     Config();
     Start();
-    /*
-    while (1)
-    {
-        ProcessIncomingMessages();
-        CheckEnvironment();
-        
-        if (!MotionDetected() && !OpStateReceived())
-        {
-            SendStatusMessages();
-            pause(INIT_LOOP_WAIT_TIME);
-            continue;
-        }
-        
-        if (!IsOdomEnabled())
-        {
-            OdomEnable();
-        }
-        if (!IsSensorsEnabled())
-        {
-            SensorsEnable();
-        }
-        
-        UpdateMotorSpeed();
-        SendStatusMessages();        
-    }
-    */
-        
+    
+    // Run this loop waiting for either motion detected, e.g., something triggering the robot to wake up, 
+    // or the PC has sent operational state configuration information, i.e., the robot is ready to do something
+    // Note: Run this loop every 1 second so as to not overwhelm the serial port with junk.
     while (!MotionDetected() && !OpStateReceived())
     {
         ProcessIncomingMessages();
         CheckEnvironment();
         SendStatusMessages();
-        pause(INIT_LOOP_WAIT_TIME);
+        pause(INIT_LOOP_WAIT_TIME);        
     };
 
+    // We're ready to do something, enable odometry and sensors
     ENABLE_ODOM();
     ENABLE_SENSORS();
     
+    // Run the main loop
     while (1)
     {
         ProcessIncomingMessages();

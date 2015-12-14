@@ -31,9 +31,9 @@ static uint16_t SPIReadADC(uint8_t channel)
 
     // In case pin was already been low, we put it high
     // so we can initiate communication after setting up pins
-    set_output(SPI_CS, 1);
-    set_output(SPI_DATA, 0);
-    set_output(SPI_CLK, 0);
+    set_output(SPI_CS, HIGH);
+    set_output(SPI_DATA, LOW);
+    set_output(SPI_CLK, LOW);
     low(SPI_CS);   // Active chip select by setting pin low
 
     // Sending configuration to device
@@ -52,8 +52,8 @@ static uint16_t SPIReadADC(uint8_t channel)
         setup <<= 1;  // shift left
     }
 
-    pulse_out(SPI_CLK, 1); //Empty clock, for sampling
-    pulse_out(SPI_CLK, 1); //Device returns low, NULL bit, we ignore it...
+    pulse_out(SPI_CLK, HIGH); //Empty clock, for sampling
+    pulse_out(SPI_CLK, HIGH); //Device returns low, NULL bit, we ignore it...
     input(SPI_DATA);
 
     // read ADC result 12 bit
@@ -61,7 +61,7 @@ static uint16_t SPIReadADC(uint8_t channel)
     for(ii = 0; ii < 12; ++ii) 
     {
         // We are sending pulse, clock signal, to ADC, because on falling edge it will return data...
-        pulse_out(SPI_CLK, 1);
+        pulse_out(SPI_CLK, HIGH);
         // Shifting bit to left, to make room for current one...
         result <<= 1;
         result = result | (get_state(SPI_DATA) & 0x01);
@@ -119,11 +119,11 @@ static uint8_t ReadDigitalIr(uint8_t index)
 {
     uint32_t pulse;
     
-    set_output(DIGITAL_IR_PIN_START + index, 1);
+    set_output(DIGITAL_IR_PIN_START + index, OUTPUT);
     usleep(10);
     
     // units of pulse are microseconds
-    pulse = pulse_in(DIGITAL_IR_PIN_START + index, 0);
+    pulse = pulse_in(DIGITAL_IR_PIN_START + index, LOW);
     
     // White surfaces reflect more light than black, so, when directed towards a white surface, 
     // the capacitor will discharge faster than it would when pointed towards a black surface.
@@ -147,12 +147,12 @@ static uint8_t ReadDigitalIr(uint8_t index)
 static float ReadUltrasonic(uint8_t addr)
 {
     // Set pins directions
-    set_direction(MUX_ADDR_START, 1);
-    set_direction(MUX_ADDR_START + 1, 1);
-    set_direction(MUX_ADDR_START+ 2, 1);
-    set_direction(MUX_ADDR_START + 3, 1);
-    set_direction(TRIG_PIN, 1);
-    set_direction(ECHO_PIN, 0);
+    set_direction(MUX_ADDR_START, OUTPUT);
+    set_direction(MUX_ADDR_START + 1, OUTPUT);
+    set_direction(MUX_ADDR_START+ 2, OUTPUT);
+    set_direction(MUX_ADDR_START + 3, OUTPUT);
+    set_direction(TRIG_PIN, OUTPUT);
+    set_direction(ECHO_PIN, INPUT);
 
     // Set the mux based on sensor index
     set_outputs(MUX_ADDR_END, MUX_ADDR_START, (int) addr); 
@@ -162,7 +162,7 @@ static float ReadUltrasonic(uint8_t addr)
     pulse_out(TRIG_PIN, 10);
 
     // Read in echo pulse
-    uint32_t pulse = pulse_in(ECHO_PIN, 1);
+    uint32_t pulse = pulse_in(ECHO_PIN, HIGH);
 
     return pulse/58.0;    
 }
@@ -249,4 +249,3 @@ void SensorsStart()
     
     cogstart(&PollSensors, NULL, sensor_stack, sizeof(sensor_stack));
 }
-

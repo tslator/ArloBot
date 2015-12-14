@@ -1,6 +1,8 @@
 #ifndef HWCONFIG_H
 #define HWCONFIG_H
 
+#include "const.h"
+
 //---------------
 // Hardware
 //---------------
@@ -74,6 +76,11 @@
 
 // Motion Detector
 #define MOTION_DETECT (13)
+
+// Motors Relay
+#define MOTORS_RELAY (14) // Note: one pin can drive the left and right motor relays
+#define MOTORS_ON    (HIGH)
+#define MOTORS_OFF   (LOW)
 
 //--------------------------------------------------------------------------
 // Sensor Configuration
