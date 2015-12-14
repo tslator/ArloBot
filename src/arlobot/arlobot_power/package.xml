@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<package>
+  <name>arlobot_power</name>
+  <version>0.0.1</version>
+  <description>
+     arlobot_power will monitor all aspect of power, voltage and current
+  </description>
+  <maintainer email="theslators@gmail.com">Tim Slator</maintainer>
+  <license>BSD</license>
+  <url type="website">https://github.com/tslator/ArloBot</url>
+  <author email="theslators@gmail.com">Tim Slator</author>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <run_depend>arlobot_bringup</run_depend>
+</package>
+

@@ -1,3 +1,4 @@
+from __future__ import print_function
 #!/usr/bin/env python
 '''
 Created on November 20, 2010
@@ -6,19 +7,22 @@ Created on November 20, 2010
 '''
 import threading
 import serial
-from cStringIO import StringIO
+try:
+    from cStringIO import StringIO
+except:
+    from io import StringIO
 import time
 try:
     import rospy
 except ImportError:
     class ROSPY:
         def loginfo(self, data):
-            print data
+            print(data)
 
     rospy = ROSPY()
 
 def _OnLineReceived(line):
-    print line
+    print(line)
 
 class SerialDataGateway(object):
     '''
@@ -77,6 +81,7 @@ class SerialDataGateway(object):
     def Write(self, data):
         #AttributeError: 'SerialDataGateway' object has no attribute '_Serial'
         try:
+            print(data)
             self._Serial.write(data)
         except AttributeError:
             rospy.loginfo("SERIAL PORT Write Error")

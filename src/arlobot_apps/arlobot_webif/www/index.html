@@ -53,6 +53,7 @@
             top: 200px;
             left: 400px;
         }
+        #
     </style>
     
     <link href="css/style.css" rel="stylesheet">
@@ -73,6 +74,7 @@
             var motorStick = $('#motor_stick');
             var panTiltStick = $('#pan_tilt_stick');
             var cameraImage = $('#camera');
+            var speakText = $( "#speakText" );
             var btnShutdown = $( "#btnShutdown" );
         
             console.log( screen.width + " " + screen.height );
@@ -84,6 +86,9 @@
                 motorStick.css( 'top', 0.5*screen.height - motorStick.height()/2 );
                 panTiltStick.css( 'left', 0.9*screen.width - panTiltStick.width()/2 );
                 panTiltStick.css( 'top', 0.5*screen.height - panTiltStick.height()/2 );
+                speakText.css('position', 'fixed');
+                speakText.css( 'left', screen.width/2 - speakText.width()/2);
+                speakText.css( 'bottom', 0.1*screen.height );
                 btnShutdown.css( 'position', 'fixed' );
                 btnShutdown.css( 'left', 0.9*screen.width - btnShutdown.width()/2 );
                 btnShutdown.css( 'top', 0.1*screen.height );
@@ -141,8 +146,7 @@
             });
             
         };
-        
-        
+                
         $( window ).on( "orientationchange", function() {
             setTimeout( layoutControls, 300 ); } );
     
@@ -211,7 +215,27 @@
             
             $('#motor_stick').joystick( 'value', 0.0, 0.0 );
             $('#pan_tilt_stick').joystick( 'value', 0.0, 0.0 );
-            $( "#btnShutdown" ).click( function() {
+            $('#speakText').click( function() {
+                var text = document.getElementById("SpeakText").value;
+                //alert("speakText button was clicked" + text);
+                
+                // I think we should send a ROS string event which will pass the string onto
+                // the ArloSpeak node.
+                
+                var html_speak_text = new ROSLIB.Topic({
+                    ros : ros,
+                    name : '/html_speak_text',
+                    messageType : 'std_msgs/String'
+                });
+
+                var speak = new ROSLIB.Message({
+                    data : text
+                });
+                html_speak_text.publish(speak);
+
+                console.log('publishing sensor_msgs/Joy', joy.axes);
+            });
+            $('#btnShutdown').click( function() {
                 //var SHUTDOWN_TIME_MS = 25000;
              
                 //if ( socket.readyState == SockJS.OPEN ) 
@@ -233,6 +257,13 @@
 		//}, SHUTDOWN_TIME_MS );
             } );
             
+            //$( "#sendText" ).click(function() {
+            //{
+            //    //var text = document.getElementById("SpeakText").value
+            //    alert("Arlo will speak this text: ", text);                
+            //    console.log("Arlo will speak this text: ", text)
+            //});
+            
             // Add a periodic function to keep the camera and socket alive
             setInterval( function() {
                // Nothing to do right now 
@@ -247,9 +278,8 @@
 
   <body>
     <p>
-	<img id="camera" src="http://10.10.0.1:8181/stream?topic=/camera/rgb/image_raw">
+	  <img id="camera" src="http://10.10.0.1:8181/stream?topic=/camera/rgb/image_raw">
     </p>
-    
     <div class="joystick" id="motor_stick">
       <div class="inner_circle"></div>
       <div class="handle"></div>
@@ -259,9 +289,12 @@
       <div class="inner_circle"></div>
       <div class="handle"></div>
     </div>
+    <div id="speakText">
+      <input type="text" id="SpeakText" size="100">
+      <button id="speakText" type="button" class="btn">Speak</button>
+    </div>
     <!--
     <button id="btnShutdown" type="button" class="btn">Shutdown</button>
-    
     <div id="modalShutdownDialog">
         <div class="modal-content">
             

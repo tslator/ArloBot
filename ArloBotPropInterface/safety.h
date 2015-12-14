@@ -1,21 +1,23 @@
 #ifndef SAFETY_H
-#define SAFETY_H
+#define SAFTEY_H
 
-// For "Safety Override" Cog
-volatile int safeToProceed = 0;
-volatile int safeToRecede = 0;
-volatile int cliff = 0;
-volatile int floorO = 0;
-volatile int Escaping = 0;
-volatile int minDistanceSensor = 0;
-volatile int ignoreProximity = 0;
-volatile int ignoreCliffSensors = 0;
-volatile int ignoreFloorSensors = 0;
-volatile int ignoreIRSensors = 0;
-volatile int pluggedIn = 0;
+#include "sensors.h"
 
 
-void SAFETY_Init();
-void SAFETY_Start();
+typedef struct _Safety_State
+{
+    uint8_t safe_to_proceed;
+    uint8_t safe_to_recede;
+    uint8_t escaping;
+    float min_distance_sensor;
+    uint8_t cliff_detected;
+    uint8_t floor_obstacle_detected;
+    uint8_t ignore_proximity;
+    uint8_t ignore_cliff_sensors;
+    uint8_t ignore_dist_sensors;
+    uint8_t ignore_floor_sensors;
+} SAFETY_STATE;
+
+void UpdateSafety(SENSOR_STATE* sensor_state, SAFETY_STATE* safety_state);
 
 #endif

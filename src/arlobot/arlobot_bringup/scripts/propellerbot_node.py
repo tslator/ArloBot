@@ -26,9 +26,8 @@ sys.path.append("~/catkin_ws/src/ArloBot/src/arlobot/arlobot_bringup/scripts")
 
 import rospy
 import tf
-from math import sin, cos
+from math import sin, cos, pi
 import time
-import json
 import subprocess
 import os
 
@@ -178,7 +177,21 @@ class PropellerComm(object):
 
                 elif self._op_state_set:
                     self._broadcast_arlo_status(msg)
+            elif msg.msg_type == SerialMessage.STATUS_US_SENSOR_MESSAGE:
+                # Publish Ultrasonic data
+                # Note: the mapping of sensors to higher-level constructs, lower deck, upper deck, front lower, back lower
+                # needs to be done here as well.  Maybe there should be a mapping param that gives a label to indicies, 
+                # e.g., "front lower deck" : 0 .. 4, "rear lower deck" : 5 .. 9, then that information could be used
+                # to publish the raw sensor data into those contructs.
+                self._handle_us_sensors(msg.payload)
+                
+            elif msg.msg_type == SerialMessage.STATUS_US_SENSOR_MESSAGE:
+                # Publish Infrared data
+                self._handle_ir_sensors(msg.payload)
+                
         elif msg.msg_class == SerialMessage.DEBUG_CLASS:
+            # Map the levels from the debug message to rospy log levels, e.g. info, warn, debug, fatal, etc
+            # and then write them to rospy.logxxx.
             pass
         else:
             # Log something about this bad message
@@ -367,337 +380,210 @@ class PropellerComm(object):
 
         self._OdometryPublisher.publish(odometry)
 
-
-    def _sensor_handling(self, msg):
-        '''
+    def _create_sensor_scan(self, sensor_input, sensor_config):
         # Joint State for Turtlebot stack
-        # Note without this transform publisher the wheels will
-        # be white, stuck at 0, 0, 0 and RVIZ will tell you that
-        # there is no transform from the wheel_links to the base_
-        # However, instead of publishing a stream of pointless transforms,
-        # I have made the joint static in the URDF like this:
-        # create.urdf.xacro:
-        # <joint name="right_wheel_joint" type="fixed">
-        # NOTE This may prevent Gazebo from working with this model
-        # Here is the old Joint State in case you want to restore it:
-        # js = JointState(name=["left_wheel_joint", "right_wheel_joint", "front_castor_joint", "back_castor_joint"],
-        # position=[0, 0, 0, 0], velocity=[0, 0, 0, 0], effort=[0, 0, 0, 0])
-        # js.header.stamp = ros_now
-        # self.joint_states_pub.publish(js)
+        # Note without this transform publisher the wheels will be white, stuck at 0, 0, 0 and RVIZ 
+        # will tell you that there is no transform from the wheel_links to the base. However, instead 
+        # of publishing a stream of pointless transforms, I have made the joint static in the URDF like this:
+        #   create.urdf.xacro:
+        #       <joint name="right_wheel_joint" type="fixed">
+        #       NOTE This may prevent Gazebo from working with this model
+        #       Here is the old Joint State in case you want to restore it:
+        #       js = JointState(name=["left_wheel_joint", "right_wheel_joint", "front_castor_joint", "back_castor_joint"],
+        #       position=[0, 0, 0, 0], velocity=[0, 0, 0, 0], effort=[0, 0, 0, 0])
+        #       js.header.stamp = ros_now
+        #       self.joint_states_pub.publish(js)
 
-        # Fake laser from "PING" Ultrasonic Sensor and IR Distance Sensor input:
-        # http://wiki.ros.org/navigation/Tutorials/RobotSetup/TF
-        # Use:
-        # roslaunch arlobot_rviz_launchers view_robot.launch
-        # to view this well for debugging and testing.
+        # Fake laser from "PING" Ultrasonic Sensor and IR Distance Sensor input: http://wiki.ros.org/navigation/Tutorials/RobotSetup/TF
+        # Use: roslaunch arlobot_rviz_launchers view_robot.launch to view this well for debugging and testing.
 
         # The purpose of this is two fold:
-        # 1. It REALLY helps adjusting values in the Propeller and ROS
-        # when I can visualize the sensor output in RVIZ!
-        # For this purpose, a lot of the parameters are a matter of personal taste.
-        #   Whatever makes it easiest to visualize is best.
+        # 1. It REALLY helps adjusting values in the Propeller and ROS when I can visualize the sensor output in RVIZ!
+        #       For this purpose, a lot of the parameters are a matter of personal taste.  Whatever makes it easiest to visualize is best.
         # 2. I want to allow AMCL to use this data to avoid obstacles that the Kinect/Xtion miss.
-        #     For the second purpose, some of the parameters here may need to be tweaked,
-        #   to adjust how large an object looks to AMCL.
-        # Note that we should also adjust the distance at which AMCL takes this data
-        # into account either here or elsewhere.
+        #       For the second purpose, some of the parameters here may need to be tweaked, to adjust how large an object looks to AMCL.
+        # Note that we should also adjust the distance at which AMCL takes this data into account either here or elsewhere.
 
         # Transform: http://wiki.ros.org/tf/Tutorials/Writing%20a%20tf%20broadcaster%20%28Python%29
 
-        # We do not need to broadcast a transform,
-        # because it is static and contained within the URDF files now.
+        # We do not need to broadcast a transform, because it is static and contained within the URDF files now.
         # Here is the static transform for reference anyway:
-        # self._SonarTransformBroadcaster.sendTransform(
+        #   self._SonarTransformBroadcaster.sendTransform(
         #     (0.1, 0.0, 0.2),
         #     (0, 0, 0, 1),
         #     ros_now,
         #     "sonar_laser",
         #     "base_link"
-        #     )
+        #   )
 
         # Some help:
         # http://goo.gl/ZU9XrJ
 
         # TODO: I'm doing this all in degrees and then converting to Radians later.
-        # Is there any way to do this in Radians?
-        # I just don't know how to create and fill an array with "Radians"
-        # since they are not rational numbers, but multiples of PI, thus the degrees.
+        #   Is there any way to do this in Radians?
+        #   I just don't know how to create and fill an array with "Radians" since they are not rational numbers, but multiples of PI, thus the degrees.
         num_readings = 360  # How about 1 per degree?
-        #num_reeading_multiple = 2 # We have to track this so we know where to put the readings!
-        #num_readings = 360 * num_reeading_multiple
         laser_frequency = 100  # I'm not sure how to decide what to use here.
         # This is the fake distance to set all empty slots, and slots we consider "out of range"
         artificial_far_distance = 10
-        #ranges = [1] * num_readings # Fill array with fake "1" readings for testing
         # Fill array with artificial_far_distance (not 0) and then overlap with real readings
-        ping_ranges = [artificial_far_distance] * num_readings
-        # If we use 0, then it won't clear the obstacles when we rotate away,
-        # because costmap2d ignores 0's and Out of Range!
-        # Fill array with artificial_far_distance (not 0) and then overlap with real readings
-        ir_ranges = [artificial_far_distance] * num_readings
+        ranges = [artificial_far_distance] * num_readings
 
         # New idea here:
         # First, I do not think that this can be used for reliable for map generation.
-        # If your room has objects that the Kinect
-        # cannot map, then you will probably need to modify the room (cover mirrors, etc.) or try
-        # other laser scanner options.
-        # SO, since we only want to use it for cost planning, we should modify the data, because
+        # If your room has objects that the Kinect cannot map, then you will probably need to modify 
+        # the room (cover mirrors, etc.) or try other laser scanner options.
+        # So, since we only want to use it for cost planning, we should modify the data, because
         # it is easy for it to get bogged down with a lot of "stuff" everywhere.
 
         # From:
         # http://answers.ros.org/question/11446/costmaps-obstacle-does-not-clear-properly-under-sparse-environment/
-        # "When clearing obstacles, costmap_2d only trusts laser scans returning a definite range.
-        # Indoors, that makes sense. Outdoors, most scans return max range, which does not clear
-        # intervening obstacles. A fake scan with slightly shorter ranges can be constructed that
-        # does clear them out."
-        # SO, we need to set all "hits" above the distance we want to pay attention to to a distance very far away,
-        # but just within the range_max (which we can set to anything we want),
-        # otherwise costmap will not clear items!
-        # Also, 0 does not clear anything! So if we rotate, then it gets 0 at that point, and ignores it,
-        # so we need to fill the unused slots with long distances.
-        # NOTE: This does cause a "circle" to be drawn around the robot at the "artificalFarDistance",
-        # but it shouldn't be a problem because we set
-        # artificial_far_distance to a distance greater than the planner uses.
+        # "When clearing obstacles, costmap_2d only trusts laser scans returning a definite range.  Indoors, that makes 
+        # sense. Outdoors, most scans return max range, which does not clear intervening obstacles. A fake scan with 
+        # slightly shorter ranges can be constructed that does clear them out."
+        # So, we need to set all "hits" above the distance we want to pay attention to to a distance very far away,
+        # but just within the range_max (which we can set to anything we want), otherwise costmap will not clear items!
+        # Also, 0 does not clear anything! So if we rotate, then it gets 0 at that point, and ignores it, so we need to 
+        # fill the unused slots with long distances.
+        # NOTE: This does cause a "circle" to be drawn around the robot at the "artificalFarDistance", but it shouldn't 
+        # be a problem because we set artificial_far_distance to a distance greater than the planner uses.
         # So while it clears things, it shouldn't cause a problem, and the Kinect should override it for things
         # in between.
 
         # Use:
-        # roslaunch arlobot_rviz_launchers view_robot.launch
-        # to view this well for debugging and testing.
+        #   roslaunch arlobot_rviz_launchers view_robot.launch to view this well for debugging and testing.
 
+        # max_range_accepted Testing:
+        # TODO: More tweaking here could be done.
+        # I think it is a trade-off, so there is no end to the adjustment that could be done. I did a lot of testing with gmapping while building a map.
+        # Obviously this would be slightly different from using a map we do not update. It seems there are so many variables here that testing is difficult.
+        # We could find one number works great in one situation but is hopeless in another. Having a comprehensive test course to test in multiple modes 
+        # for every possible value would be great, but I think it would take months! :)
+        # REMEMBER, the costmap only pays attention out to a certain set for obstacle_range in costmap_common_params.yaml anyway.
+        # Here are my notes for different values of "max_range_accepted":
+        #   1 - looks good, and works ok, but I am afraid that the costmap gets confused with things popping in and out of sight all of the time,
+        #       causing undue wandering.
+        #   2 - This producing less wandering due to things popping in and out of the field of view, BUT it also shows that we get odd affects at longer distances. i.e.
+        #       A doorframe almost always has a hit right in the middle of it.
+        #       In a hallway there is often a hit in the middle about 1.5 meters out.
+        #  .5 - This works very well to have the PING data ONLY provide obstacle avoidance, and immediately forget about said obstacles.
+        #       This prevents the navigation stack from fighting with the Activity Board code's built in safety stops, and instead navigate around obstacles before 
+        #       the Activity Board code gets involved (other than to set speed reductions).
+        #       The only down side is if you tell ArloBot to go somewhere that he cannot due to low obstacles, he will try forever. He won't just bounce off of the obstacle,
+        #       but he will keep trying it and then go away, turn around, and try again over and over. He may even start wandering around the facility trying to find another way in,
+        #       but he will eventually come back and try it again.  I'm not sure what the solution to this is though, because avoiding low lying obstacles and adding low lying
+        #       features to the map are really two different things.  I think if this is well tuned to avoid low lying obstacles it probably will not work well for mapping features.
+        #       IF we could map features with the PING sensors, we wouldn't need the 3D sensor. :)
+        # TODO: One option may be more PING sensors around back. Right now when the robot spins, it clears the obstacles behind it, because there are fewer sensors on the back side.
+        # If the obstacle was seen all of the way around the robot, in the same spot, it may stop returning to the same location as soon as it turns around?
+
+        # NOTE: The bump sensors on Turtlebot mark but do not clear. I'm not sure how that works out. It seems like every bump would end up being a "blot" in the landscape never to 
+        # be returned to, but maybe there is something I am missing?
+
+        # NOTE: Could this be different for PING vs. IR?
+        # Currently I'm not using IR! Just PING. The IR is not being used by costmap. It is here for seeing in RVIZ, and the Propeller board uses it for emergency stopping,
+        # but costmap isn't watching it at the moment. I think it is too erratic for that. Convert cm to meters and add offset
+        
+        sensors = [for x in sensor_input if (x/100.0) + sensor_config["offset"] > sensor_config["threshold"] * 100 else (x/100.0) + sensor_config["offset"]]
+
+        # Single Point code:
+        for offset, position in dict["front"]:
+            ranges[position] = sensors[offset]
+            
+        for pos in dict["rear"]:
+            ranges[position] = sensors[offset]
+        
+        # LaserScan: http://docs.ros.org/api/sensor_msgs/html/msg/LaserScan.html
+        scan = LaserScan()
+        scan.header.stamp = ros_now
+        scan.header.frame_id = sensor_config["frame id"]
+        # For example:
+        #       scan.angle_min = -45 * M_PI / 180; // -45 degree
+        #       scan.angle_max = 45 * M_PI / 180;   // 45 degree
+        # if you want to receive a full 360 degrees scan, you should try setting min_angle to -pi/2 and max_angle to 3/2 * pi.
+        # Radians: http://en.wikipedia.org/wiki/Radian#Advantages_of_measuring_in_radians
+        scan.angle_min = 0
+        # Make sure the part you divide by num_readings is the same as your angle_max!
+        # Might even make sense to use a variable here?
+        scan.angle_increment = (2 * pi) / len(sensor_input)
+        scan.time_increment = (1 / laser_frequency) / len(sensor_input)
+        scan.range_min = sensor_config["range min"]
+        scan.range_max = sensor_config["range max"]
+        # This has to be above our "artificial_far_distance", otherwise "hits" at artificial_far_distance will be ignored,
+        # which means they will not be used to clear the cost map!
+        # in Meters Distances above this will be ignored
+        scan.range_max = artificial_far_distance + 1
+        scan.ranges = ranges
+        
+        return scan
+
+        
+    def _publish_sensor_data(self, scan, publisher):
+        # "intensity" is a value specific to each laser scanner model.
+        # It can safely be ignored
+        publisher.publish(scan)
+        
+        
+    def _handle_us_sensors(self, sensor_input):
+        # A total of 16 ultrasonic sensors are attached to Arlobot.  They are mapped as follows:
+        #   1-10 - lower deck (5 on front and 5 on back), used as fake laser
+        #   11-16 - top deck (3 on front and 3 on back), used for safety
+        # There are different number of sensors, 10 ultrasonic and 8 ir.  
+        # Rather than directly accessing the list, it would be better to create a mapping based on
+        # sensor separation.
+        #            |
+        #       |          |
+        #  |                     |
+        #
+        # -------------------------
+        #
+        #  |                     |
+        #       |          |
+        #            |
+        
         # Note that sensor orientation is important here!
         # If you have a different number or aim them differently this will not work!
         # TODO: Tweak this value based on real measurements!
         # TODO: Use both IR and PING sensors?
-        # The offset between the pretend sensor location in the URDF
-        # and real location needs to be added to these values. This may need to be tweaked.
-        sensor_offset = 0.217 # Measured, Calculated: 0.22545
-        # This will be the max used range, anything beyond this is set to "artificial_far_distance"
-        max_range_accepted = .5
-
-        # max_range_accepted Testing:
-        # TODO: More tweaking here could be done.
-        # I think it is a trade-off, so there is no end to the adjustment that could be done.
-        # I did a lot of testing with gmappingn while building a map.
-        # Obviously this would be slightly different from using a map we do not update.
-        # It seems there are so many variables here that testing is difficult.
-        # We could find one number works great in one situation but is hopeless in another.
-        # Having a comprehensive test course to test in multiple modes for every possible value would be great,
-        # but I think it would take months! :)
-        # REMEMBER, the costmap only pays attention out to a certain set
-        # for obstacle_range in costmap_common_params.yaml anyway.
-        # Here are my notes for different values of "max_range_accepted":
-        # 1 - looks good, and works ok, but
-        # I am afraid that the costmap gets confused with things popping in and out of sight all of the time,
-        # causing undue wandering.
-        # 2 - This producing less wandering due to things popping in and out of the field of view,
-        # BUT it also shows that we get odd affects at longer distances. i.e.
-        #     A doorframe almost always has a hit right in the middle of it.
-        #     In a hallway there is often a hit in the middle about 1.5 meters out.
-        # .5 - This works very well to have the PING data ONLY provide obstacle avoidance,
-        # and immediately forget about said obstacles.
-        #     This prevents the navigation stack from fighting with the Activity Board code's
-        # built in safety stops, and instead navigate around obstacles before the Activity Board
-        # code gets involved (other than to set speed reductions).
-        #     The only down side is if you tell ArloBot to go somewhere that he cannot due to low obstacles,
-        # he will try forever. He won't just bounce off of the obstacle,
-        #     but he will keep trying it and then go away, turn around,
-        # and try again over and over. He may even start wandering around
-        # the facility trying to find another way in,
-        #     but he will eventually come back and try it again.
-        #     I'm not sure what the solution to this is though,
-        # because avoiding low lying obstacles and adding low lying
-        # features to the map are really two different things.
-        #     I think if this is well tuned to avoid low lying obstacles it
-        # probably will not work well for mapping features.
-        #     IF we could map features with the PING sensors, we wouldn't need the 3D sensor. :)
-        # TODO: One option may be more PING sensors around back.
-        # Right now when the robot spins, it clears the obstacles behind it,
-        # because there are fewer sensors on the back side.
-        # If the obstacle was seen all of the way around the robot, in the same spot,
-        # it may stop returning to the same location as soon as it turns around?
-
-        #     NOTE: The bump sensors on Turtlebot mark but do not clear.
-        # I'm not sure how that works out. It seems like every bump would
-        # end up being a "blot" in the landscape never to be returned to,
-        # but maybe there is something I am missing?
-
-        # NOTE: Could this be different for PING vs. IR?
-        # Currently I'm not using IR! Just PING. The IR is not being used by costmap.
-        # It is here for seeing in RVIZ, and the Propeller board uses it for emergency stopping,
-        # but costmap isn't watching it at the moment. I think it is too erratic for that.
-
-        if not msg.json_valid:
-            return
-        sensor_data = msg.json
-            
-        ping = [artificial_far_distance] * 10
-        ir = [artificial_far_distance] * len(ping)
-
-        # Convert cm to meters and add offset
-        for i in range(0, len(ping)):
-            # ping[0] = (int(line_parts[7]) / 100.0) + sensor_offset
-            ping[i] = (sensor_data.get('p' + str(i), artificial_far_distance * 100) / 100.0) + sensor_offset
-            # Set to "out of range" for distances over "max_range_accepted" to clear long range obstacles
-            # and use this for near range only.
-            if ping[i] > max_range_accepted:
-                # Be sure "ultrasonic_scan.range_max" is set higher than this or
-                # costmap will ignore these and not clear the cost map!
-                ping[i] = artificial_far_distance
-            ir[i] = (sensor_data.get('i' + str(i), artificial_far_distance * 100) / 100.0) + sensor_offset  # Convert cm to meters and add offset
-
+        # The offset between the pretend sensor location in the URDF and real location needs to be added to these values. This may need to be tweaked.
+        #sensor_offset = 0.217 # Measured, Calculated: 0.22545
         # The sensors are 11cm from center to center at the front of the base plate.
         # The radius of the base plate is 22.545 cm
         # = 28 degree difference (http://ostermiller.org/calc/triangle.html)
-
-        sensor_seperation = 28
-
-        # Spread code: NO LONGER USED
-        # TODO: This could make sense to return to if used properly,
-        # allowing obstacles to "fill" the space and smoothly move "around"
-        # the robot as it rotates and objects move across the view of the PING
-        # sensors, instead of "jumping" from one point to the next.
-        # # "sensor_spread" is how wide we expand the sensor "point" in the fake laser scan.
-        # # For the purpose of obstacle avoidance, I think this can actually be a single point,
-        # # Since the costmap inflates these anyway.
-        #
-        # #One issue I am having is it seems that the "ray trace" to the maximum distance
-        # #may not line up with near hits, so that the global cost map is not being cleared!
-        # #Switching from a "spread" to a single point may fix this?
-        # #Since the costmap inflates obstacles anyway, we shouldn't need the spread should we?
-        #
-        # #sensor_spread = 10 # This is how wide of an arc (in degrees) to paint for each "hit"
-        # #sensor_spread = 2 # Testing. I think it has to be even numbers?
-        #
-        # #NOTE:
-        # #This assumes that things get bigger as they are further away. This is true of the PING's area,
-        # #and while it may or may not be true of the object the PING sees, we have no way of knowing if
-        # #the object fills the ping's entire field of view or only a small part of it, a "hit" is a "hit".
-        # #However for the IR sensor, the objects are points, that are the same size regardless of distance,
-        # #so we are clearly inflating them here.
-        #
-        # for x in range(180 - sensor_spread / 2, 180 + sensor_spread / 2):
-        #     PINGranges[x] = ping[5] # Rear Sensor
-        #     IRranges[x] = ir[5] # Rear Sensor
-        #
-        # for x in range((360 - sensor_seperation * 2) - sensor_spread / 2,
-        #                (360 - sensor_seperation * 2) + sensor_spread / 2):
-        #     PINGranges[x] = ping[4]
-        #     IRranges[x] = ir[4]
-        #
-        # for x in range((360 - sensor_seperation) - sensor_spread / 2,
-        #                (360 - sensor_seperation) + sensor_spread / 2):
-        #     PINGranges[x] = ping[3]
-        #     IRranges[x] = ir[3]
-        #
-        # for x in range(360 - sensor_spread / 2, 360):
-        #     PINGranges[x] = ping[2]
-        #     IRranges[x] = ir[2]
-        # # Crosses center line
-        # for x in range(0, sensor_spread /2):
-        #     PINGranges[x] = ping[2]
-        #     IRranges[x] = ir[2]
-        #
-        # for x in range(sensor_seperation - sensor_spread / 2, sensor_seperation + sensor_spread / 2):
-        #     PINGranges[x] = ping[1]
-        #     IRranges[x] = ir[1]
-        #
-        # for x in range((sensor_seperation * 2) - sensor_spread / 2, (sensor_seperation * 2) + sensor_spread / 2):
-        #     PINGranges[x] = ping[0]
-        #     IRranges[x] = ir[0]
-
-        # Single Point code:
-        #for x in range(180 - sensor_spread / 2, 180 + sensor_spread / 2):
-        ping_ranges[180 + sensor_seperation * 2] = ping[5]
-        ir_ranges[180 + sensor_seperation * 2] = ir[5]
-
-        ping_ranges[180 + sensor_seperation] = ping[6]
-        ir_ranges[180 + sensor_seperation] = ir[6]
-
-        ping_ranges[180] = ping[7]  # Rear Sensor
-        ir_ranges[180] = ir[7]  # Rear Sensor
-
-        ping_ranges[180 - sensor_seperation] = ping[8]
-        ir_ranges[180 - sensor_seperation] = ir[8]
-
-        ping_ranges[180 - sensor_seperation * 2] = ping[9]
-        ir_ranges[180 - sensor_seperation * 2] = ir[9]
-
-        # for x in range((360 - sensor_seperation * 2) - sensor_spread / 2,
-        #                (360 - sensor_seperation * 2) + sensor_spread / 2):
-        ping_ranges[360 - sensor_seperation * 2] = ping[4]
-        ir_ranges[360 - sensor_seperation * 2] = ir[4]
-
-        # for x in range((360 - sensor_seperation) - sensor_spread / 2,
-        #                (360 - sensor_seperation) + sensor_spread / 2):
-        ping_ranges[360 - sensor_seperation] = ping[3]
-        ir_ranges[360 - sensor_seperation] = ir[3]
-
-        #for x in range(360 - sensor_spread / 2, 360):
-        #PINGranges[x] = ping[2]
-        #IRranges[x] = ir[2]
-        # Crosses center line
-        #for x in range(0, sensor_spread /2):
-        ping_ranges[0] = ping[2]
-        ir_ranges[0] = ir[2]
-
-        #for x in range(sensor_seperation - sensor_spread / 2, sensor_seperation + sensor_spread / 2):
-        ping_ranges[sensor_seperation] = ping[1]
-        ir_ranges[sensor_seperation] = ir[1]
-
-        #for x in range((sensor_seperation * 2) - sensor_spread / 2, (sensor_seperation * 2) + sensor_spread / 2):
-        ping_ranges[sensor_seperation * 2] = ping[0]
-        ir_ranges[sensor_seperation * 2] = ir[0]
-
-        # LaserScan: http://docs.ros.org/api/sensor_msgs/html/msg/LaserScan.html
-        ultrasonic_scan = LaserScan()
-        infrared_scan = LaserScan()
-        ultrasonic_scan.header.stamp = ros_now
-        infrared_scan.header.stamp = ros_now
-        ultrasonic_scan.header.frame_id = "ping_sensor_array"
-        infrared_scan.header.frame_id = "ir_sensor_array"
-        # For example:
-        #scan.angle_min = -45 * M_PI / 180; // -45 degree
-        #scan.angle_max = 45 * M_PI / 180;   // 45 degree
-        # if you want to receive a full 360 degrees scan,
-        # you should try setting min_angle to -pi/2 and max_angle to 3/2 * pi.
-        # Radians: http://en.wikipedia.org/wiki/Radian#Advantages_of_measuring_in_radians
-        ultrasonic_scan.angle_min = 0
-        infrared_scan.angle_min = 0
-        #ultrasonic_scan.angle_max = 2 * 3.14159 # Full circle # Letting it use default, which I think is the same.
-        #infrared_scan.angle_max = 2 * 3.14159 # Full circle # Letting it use default, which I think is the same.
-        #ultrasonic_scan.scan_time = 3 # I think this is only really applied for 3D scanning
-        #infrared_scan.scan_time = 3 # I think this is only really applied for 3D scanning
-        # Make sure the part you divide by num_readings is the same as your angle_max!
-        # Might even make sense to use a variable here?
-        ultrasonic_scan.angle_increment = (2 * 3.14) / num_readings
-        infrared_scan.angle_increment = (2 * 3.14) / num_readings
-        ultrasonic_scan.time_increment = (1 / laser_frequency) / num_readings
-        infrared_scan.time_increment = (1 / laser_frequency) / num_readings
+        #sensor_separation = 28
         # From: http://www.parallax.com/product/28015
         # Range: approximately 1 inch to 10 feet (2 cm to 3 m)
         # This should be adjusted based on the imaginary distance between the actual laser
         # and the laser location in the URDF file.
         # in Meters Distances below this number will be ignored REMEMBER the offset!
-        ultrasonic_scan.range_min = 0.02
-        # in Meters Distances below this number will be ignored REMEMBER the offset!
-        infrared_scan.range_min = 0.02
-        # This has to be above our "artificial_far_distance",
-        # otherwise "hits" at artificial_far_distance will be ignored,
-        # which means they will not be used to clear the cost map!
-        # in Meters Distances above this will be ignored
-        ultrasonic_scan.range_max = artificial_far_distance + 1
-        # in Meters Distances above this will be ignored
-        infrared_scan.range_max = artificial_far_distance + 1
-        ultrasonic_scan.ranges = ping_ranges
-        infrared_scan.ranges = ir_ranges
-        # "intensity" is a value specific to each laser scanner model.
-        # It can safely be ignored
-
-        self._UltraSonicPublisher.publish(ultrasonic_scan)
-        self._InfraredPublisher.publish(infrared_scan)
-        '''
-        pass
+        
+        config = { "offset" : 0.217,
+                   "threshold" : 0.5,
+                   "range min" : 0.02, # in meters
+                   "range max" : 3, # in meters
+                   "frame id" : "ping_sensor_array",
+                   "front" : [(5, 180 + 28*2), (6, 180 + 28), (7, 180), (8, 180 - 28), (9, 180 - 28*2)],, 
+                   "rear"  : [(4, 360-28*2), (3,360-28), (2, 0), (1, 28), (0, 28*2)] 
+                 }
+        
+        scan = self._create_sensor_scan(sensor_input, config)
+        self._publish_sensor_data(scan, self._UltraSonicPublisher)
+        
+        
+    def _handle_ir_sensors(self, sensor_input):
+        config = { "offset" : 0.217,
+                   "threshold" : 1000000,
+                   "range min" : 0.1, # in meters
+                   "range max" : 0.8, # in meters
+                   "frame id" : "ir_sensor_array",
+                   "front" : [(5, 180 + 28*2), (6, 180 + 28), (7, 180), (8, 180 - 28), (9, 180 - 28*2)],, 
+                   "rear"  : [(4, 360-28*2), (3,360-28), (2, 0), (1, 28), (0, 28*2)] 
+                 }
+        
+        scan = self._create_sensor_scan(sensor_input, config)
+        self._publish_sensor_data(scan, self._InfraredPublisher)
+        
+        
 
 
     def _write_serial(self, message):

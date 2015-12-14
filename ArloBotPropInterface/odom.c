@@ -1,166 +1,85 @@
-/**************************************************************************************************
- The purpose of this module is to calculate and report odometry readings
-**************************************************************************************************/
-
-/**************************************************************************************************
-  Includes
-**************************************************************************************************/
+#include <simpletools.h>
 #include "arlodrive.h"
+#include "utils.h"
 #include "odom.h"
-#include "message.h"
 
-/**************************************************************************************************
-  Variables
-**************************************************************************************************/
-extern float DistancePerCount;
-extern float TrackWidth;
+static ODOM_STATE OdomState;
+static int odom_stack[128];
+extern float dist_per_count;
+extern float track_width;
+uint8_t odom_enabled;
 
-// For Odometry
-static int ticksLeft;
-static int ticksRight;
-static int ticksLeftOld;
-static int ticksRightOld;
-static int speedLeft;
-static int speedRight;
-
-static float Heading;
-static float X;
-static float Y;
-
-static int fstack[256];
-
-/**************************************************************************************************
-  Functions
-**************************************************************************************************/
-// Note: We don't need these
-void getTicks();
-void displayTicks();
-void BroadcastOdometry(void *par); // Use a cog to broadcast Odometry to ROS continuously
-
-// This will be moved to a new module, e.g. utilities or time etc
-extern uint32_t millis();
-
-
-/**************************************************************************************************
-  Retrieves left and right ticks and calculates left and right wheel speed
-**************************************************************************************************/
-// Note: Should be able to make this static
-void getTicks(void) 
+static void UpdateOdometry()
 {
+    static int ticksLeft;
+    static int ticksRight;
+    static int ticksLeftOld;
+    static int ticksRightOld;
+    static int speedLeft;
+    static int speedRight;    
+    
     ticksLeftOld = ticksLeft;
     ticksRightOld = ticksRight;
     drive_getTicks(&ticksLeft, &ticksRight);
     drive_getSpeedCalc(&speedLeft, &speedRight);
-}
 
-/**************************************************************************************************
-  Calculates the odometry values for the Odometry message and sends the message
-**************************************************************************************************/
-void displayTicks(void) 
-{
     int deltaTicksLeft      = ticksLeft - ticksLeftOld;
     int deltaTicksRight     = ticksRight - ticksRightOld;
-    double deltaDistance    = 0.5f * (double) (deltaTicksLeft + deltaTicksRight) * DistancePerCount;
-    double deltaX           = deltaDistance * (double) cos(Heading);
-    double deltaY           = deltaDistance * (double) sin(Heading);
-    // Note: Why are we calculating RadiansPerCount everytime when the value can only change if DistancePerCount or TrackWidth change
-    // which can only change if there is a change in the default values (at compile time) or there is a configuration change
-    double RadiansPerCount  = DistancePerCount / TrackWidth;
-    double deltaHeading     = (double) (deltaTicksRight - deltaTicksLeft) * RadiansPerCount;
+    float deltaDistance    = 0.5f * (double) (deltaTicksLeft + deltaTicksRight) * dist_per_count;
+    float deltaX           = deltaDistance * (double) cos(OdomState.heading);
+    float deltaY           = deltaDistance * (double) sin(OdomState.heading);
+    float radians_per_count = dist_per_count / track_width;
+    float deltaHeading     = (double) (deltaTicksRight - deltaTicksLeft) * radians_per_count;
 
-    X += deltaX;
-    Y += deltaY;
-    Heading += deltaHeading;
+    OdomState.x_dist += deltaX;
+    OdomState.y_dist += deltaY;
+    OdomState.heading += deltaHeading;
     
     // limit heading to -Pi <= heading < Pi
-    if (Heading > PI) 
+    if (OdomState.heading > PI) 
     {
-        Heading -= 2.0 * PI;
+        OdomState.heading -= 2.0 * PI;
     } 
     else 
     {
-        if (Heading <= -PI) 
+        if (OdomState.heading <= -PI) 
         {
-            Heading += 2.0 * PI;
+            OdomState.heading += 2.0 * PI;
         }
     }
     
     // http://webdelcire.com/wordpress/archives/527
-    double V     = ((speedRight * DistancePerCount) + (speedLeft * DistancePerCount)) / 2;
-    double Omega = ((speedRight * DistancePerCount) - (speedLeft * DistancePerCount)) / TrackWidth;
-
-    // Odometry for ROS
-       
-    STATUS_MSG msg;
-    memset(&msg, 0, sizeof(msg));
-    msg.type = STATUS_MSG_TYPE_ODOM;
-    msg.data.odom.x_dist = X;
-    msg.data.odom.y_dist = Y;
-    msg.data.odom.heading = Heading;
-#ifdef GYRO_SUPPORT
-    msg.data.odom.gyro_heading = GYRO_GetHeading();
-#endif
-    msg.data.odom.linear_speed = V;
-    msg.data.odom.angular_speed = Omega;
-    MSG_SendStatusMessage(&msg);
+    OdomState.linear_speed = ((speedRight * dist_per_count) + (speedLeft * dist_per_count)) / 2;
+    OdomState.angular_speed = ((speedRight * dist_per_count) - (speedLeft * dist_per_count)) / track_width;    
 }
 
-/* Some of the code below came from Dr. Rainer Hessmer's robot.pde
-   The rest was heavily inspired/copied from here:
-http://forums.parallax.com/showthread.php/154963-measuring-speed-of-the-ActivityBot?p=1260800&viewfull=1#post1260800
-*/
-
-/**************************************************************************************************
-  Main COG function
-  This function runs in a forever loop
-  Every 100ms it calculates new Odometry values and sends a message
-**************************************************************************************************/
-void BroadcastOdometry(void *par)
+static void BroadcastOdometry(void *par)
 {
     static uint32_t last_time = 0;
 
     while (1) 
     {
+        
         if ((millis() - last_time) > 100)
         {
             last_time = millis();
-            getTicks();
-            displayTicks();
+            if (odom_enabled)
+            {
+                UpdateOdometry();
+            }
         }
     }
 }
 
-/**************************************************************************************************
-  Initializes internal module variables
-**************************************************************************************************/
-void ODOM_Init()
+void GetOdomState(ODOM_STATE* state)
 {
-    ticksLeft       = 0;
-    ticksRight      = 0;
-    ticksLeftOld    = 0;
-    ticksRightOld   = 0;
-    speedLeft       = 0;
-    speedRight      = 0;
-
-    Heading = 0.0;
-    X       = 0.0;
-    Y       = 0.0;
+    memcpy(state, &OdomState, sizeof(OdomState));
 }
 
-/**************************************************************************************************
-  Configures internal module components
-**************************************************************************************************/
-void ODOM_Config()
-{
+void OdomStart()
+{   
+    odom_enabled = 0;
+    memset(&OdomState, 0, sizeof(OdomState));
+    
+    cogstart(&BroadcastOdometry, NULL, odom_stack, sizeof(odom_stack));
 }
-
-/**************************************************************************************************
-  Kicks off the COG function
-**************************************************************************************************/
-void ODOM_Start()
-{
-    cogstart(&BroadcastOdometry, NULL, fstack, sizeof fstack);
-}
-/*************************************************************************************************
-EOF
-*/

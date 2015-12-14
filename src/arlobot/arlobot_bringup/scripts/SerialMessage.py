@@ -25,6 +25,9 @@ class SerialMessage():
 
     STATUS_ODOMETRY_MESSAGE = 1
     STATUS_OP_STATE_MESSAGE = 2
+    STATUS_ULTRASONIC_SENSOR_MESSAGE = 3
+    STATUS_ANALOG_IR_SENSOR_MESSAGE = 4
+    STATUS_DIGITAL_IR_SENSOR_MESSAGE = 5
 
     __ACTION_MESSAGE_CLASS = 'a'
     __STATUS_MESSAGE_CLASS = 's'
@@ -48,7 +51,7 @@ class SerialMessage():
         # type can appear under different classes, e.g., Operational State is both a Config and Status message
         self.msg_type = msg_type
         # The payload is a list representation of the data contained in the message.  Design decision is to keep the
-        # type as list because is easy to convert it to a string as necessary, typically for printing.
+        # type as list because it is easy to convert it to a string as necessary, typically for printing.
         self.payload = None
 
         # We do this part if we are creating a message from parameters, e.g. a list
@@ -86,6 +89,8 @@ class SerialMessage():
 
         if msg_class == 's':
             self.msg_class = self.STATUS_CLASS
+            
+            # Parse the Odometry data
             if msg_type == 'o':
                 self.msg_type = self.STATUS_ODOMETRY_MESSAGE
 
@@ -118,7 +123,7 @@ class SerialMessage():
                 else:
                     raise SerialMessageError("Wrong number of parameters for Odometry message")
 
-
+            # Parse the Operational State data
             elif msg_type == 'p':
                 self.msg_type = self.STATUS_OP_STATE_MESSAGE
 
@@ -137,7 +142,7 @@ class SerialMessage():
                 self.floor_obstacle_detected = 0
 
                 self.payload = msg_data.split(',')
-                if len(self.payload) in range(13, 14):
+                if len(self.payload) == 13:
                     offset = 0
                     self.drive_geometry_received = int(self.payload[offset])
                     offset += 1
@@ -167,6 +172,40 @@ class SerialMessage():
                     offset += 1
                 else:
                     raise SerialMessageError("Wrong number of parameters for Op State message")
+
+            # Parse the Infrared Sensor data
+            elif msg_type == 'i':
+                self.msg_type = self.STATUS_ANALOG_IR_SENSOR_MESSAGE
+
+                self.payload = msg_data.split(',')
+                if len(self.payload) == 8:
+                    pass
+                else:
+                    raise SerialMessageError("Wrong number of parameters for Analog IR message")
+                pass
+            
+            # Parse the Ultrasonic Sensor data
+            elif msg_type == 'u':
+                self.msg_type = self.STATUS_ULTRASONIC_SENSOR_MESSAGE
+                
+                self.payload = msg_data.split(',')
+                if len(self.payload) == 16:
+                    # Nothing else to do, unless there is a need to create other representations
+                    # of the sensors values, e.g., a dictionary
+                    pass
+                else:
+                    raise SerialMessageError("Wrong number of parameters for Ultrasonic message")
+                pass
+
+            elif msg_type == 'g':
+                self.msg_type = self.STATUS_DIGITAL_IR_SENSOR_MESSAGE
+
+                self.payload = msg_data.split(',')
+                if len(self.payload) == 6:
+                    pass
+                else:
+                    raise SerialMessageError("Wrong number of parameters for Analog IR message")
+                pass
 
 
     def _parse_list_msg(self, data):

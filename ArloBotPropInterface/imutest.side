@@ -1,11 +1,6 @@
-ArloBotPropInterface.c
--L ./../ArloBotParallaxLibraries/libarlodrive
-sensors.c -> sensors.c
-message.c -> message.c
+imutest.c
+imu2.c -> imu2.c
 utils.c -> utils.c
-odom.c -> odom.c
-safety.c -> safety.c
-imu.c -> imu.c
 i2cbus.c -> i2cbus.c
 >compiler=C
 >memtype=cmm main ram compact

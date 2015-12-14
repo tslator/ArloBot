@@ -15,5 +15,4 @@
 //Microseconds to inch conversion: uS / 148 = inch
 #define IN_CONVERSION (148)
 
-
 #endif
