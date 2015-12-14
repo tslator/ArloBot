@@ -85,10 +85,10 @@
 #define FLOOR_OBSTACLE_REAR_END (DIGITAL_IR_REAR_END)
 
 
-#define ULTRASONIC_MIN_SAFE_DISTANCE (10.0) // in centimeters
-#define ANALOG_IR_MIN_SAFE_DISTANCE (10.0)  // in centimeters
-#define CLIFF_MIN_SAFE_DISTANCE (50.0)      // in centimeters
-#define MAX_DISTANCE (1000.0)               // in centimeters
+#define ULTRASONIC_MIN_SAFE_DISTANCE (6.0) // in centimeters
+#define ANALOG_IR_MIN_SAFE_DISTANCE (6.0)  // in centimeters
+#define CLIFF_MIN_SAFE_DISTANCE (50.0)     // in centimeters
+#define MAX_DISTANCE (1000.0)              // in centimeters
 
 
 static void CheckDetect(uint8_t* sensors, uint8_t start, uint8_t end, uint32_t* result)
