@@ -16,9 +16,12 @@
 void adc_init(int csPin, int sclPin, int doPin,int diPin);
 float adc_volts(int channel);
 
-static int sensor_stack[128 + 40];
+// Note: This is the maximum stack size that still works.  Any bigger and nothing happens.
+static int sensor_stack[40 + 120];
 static volatile SENSOR_STATE SensorState;
+#if 0
 static volatile IMU_STATE ImuState;
+#endif
 
 #ifdef USE_SPI_ADC
 static uint16_t SPIReadADC(uint8_t channel)
@@ -73,7 +76,6 @@ static uint16_t SPIReadADC(uint8_t channel)
 static uint16_t I2CReadADC(uint8_t channel)
 {
     const uint8_t CHANNEL[8] = {0x8C,0xCC,0x9C,0xDC,0xAC,0xEC,0xBC,0xFC};
-                                 // Constant configuration data
     uint8_t a2d_valueH;
     uint8_t a2d_valueL;
 
@@ -84,12 +86,6 @@ static uint16_t I2CReadADC(uint8_t channel)
     I2C_ByteRead(AD7828_ADDR, 0, &a2d_valueL);
     
     return (a2d_valueH << 8) + a2d_valueL;
-}
-
-static float PropReadADC(uint8_t channel)
-{
-    adc_init(PROP_A2D_CS, PROP_A2D_SCL, PROP_A2D_DO, PROP_A2D_DI);
-    return adc_volts(channel);
 }
 
 static float ReadAnalogIr(uint8_t index)
@@ -202,19 +198,54 @@ static void PollUltrasonicSensors()
     SensorState.ultrasonic[ii++] = 100;
 }
 
+#if 0
 static void PollImuSensor()
 {
     ReadImu(&ImuState);
 }
+#endif
 
 static void PollMotionSensor()
 {
-    SensorState.motion_detected = 0;
+    SensorState.motion_detected = 0;//get_state(MOTION_DETECT);
+}
+
+static void PollMotorPower()
+{
+    uint8_t ii;
+    
+    // Wow, the following commented code would not work (crashed the board)
+    // But, the code after works just fine!!! WTF!!!
+    //SensorState.left_motor_voltage = adc_volts(LEFT_MOTOR_VOLTAGE);
+    //SensorState.right_motor_voltage = adc_volts(RIGHT_MOTOR_VOLTAGE);
+    //SensorState.left_motor_current = adc_volts(LEFT_MOTOR_CURRENT);
+    //SensorState.right_motor_current = adc_volts(RIGHT_MOTOR_CURRENT);
+    
+    adc_init(PROP_A2D_CS, PROP_A2D_SCL, PROP_A2D_DO, PROP_A2D_DI);
+    
+    for (ii = 0; ii < 4; ++ii)
+    {
+        float value = adc_volts(ii);
+        switch (ii)
+        {
+            case 0:
+                SensorState.left_motor_voltage = value;
+                break;
+            case 1:
+                SensorState.right_motor_voltage = value;
+                break;
+            case 2:
+                SensorState.left_motor_current = value;
+                break;
+            case 3:
+                SensorState.right_motor_current = value;
+                break;
+        }
+    }
 }
 
 static void PollSensors(void *par)
 {
-    uint8_t ii;
     while (1)
     {
         //PollAnalogIRSensors();
@@ -223,7 +254,8 @@ static void PollSensors(void *par)
         //PollDigitalIRSensors(); 
         PollUltrasonicSensors();
         //PollImuSensor();
-        //PollMotionSensor();
+        PollMotionSensor();
+        PollMotorPower();
     }
 }
 
@@ -232,10 +264,12 @@ void GetSensorState(SENSOR_STATE* state)
     memcpy(state, &SensorState, sizeof(SensorState));
 }
 
+#if 0
 void GetImuState(IMU_STATE* state)
-{
+{   
     memcpy(state, &ImuState, sizeof(ImuState));
 }
+#endif
 
 void SensorsStart()
 {

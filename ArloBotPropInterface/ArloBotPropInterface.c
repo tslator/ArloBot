@@ -16,8 +16,8 @@
 #define MAX_NO_SERIAL_COMMS_TIME (1000)
 #define INIT_LOOP_WAIT_TIME (1000)
 
-#define OP_STATE_STATUS_TIME (1000)
-#define ODOM_STATE_STATUS_TIME (1000)
+#define OP_STATE_STATUS_TIME (250)
+#define ODOM_STATE_STATUS_TIME (100)
 #define AIR_SENSOR_STATUS_TIME (1000)
 #define DIR_SENSOR_STATUS_TIME (1000)
 #define US_SENSOR_STATUS_TIME (100)
@@ -51,10 +51,10 @@ const char COMMA[2] = ",";
 #define DIR_SENSOR_FORMAT   "%c:%c:%d,%d,%d,%d,%d,%d\n"
 
 #define OPSVALFMT "%.1f"
-#define OP_STATE_FORMAT "%c:%c:%d,%d,%d,%d,%d,%d,%d,%d,%d,"OPSVALFMT","OPSVALFMT",%d,%d\n"
+#define OP_STATE_FORMAT "%c:%c:%d,%d,%d,%d,%d,%d,%d,%d,"OPSVALFMT","OPSVALFMT","OPSVALFMT","OPSVALFMT","OPSVALFMT",%d,%d\n"
 
 #define AIRVALFMT "%.1f"
-#define AIR_SENSOR_FORMAT "%c:%c:"AIRVALFMT","AIRVALFMT","AIRVALFMT","AIRVALFMT","AIRVALFMT","AIRVALFMT","AIRVALFMT","AIRVALFMT"\n"
+#define AIR_SENSOR_FORMAT "%c:%c:"AIRVALFMT","AIRVALFMT","AIRVALFMT","AIRVALFMT","AIRVALFMT","AIRVALFMT","AIRVALFMT","AIRVALFMT","AIRVALFMT","AIRVALFMT","AIRVALFMT","AIRVALFMT","AIRVALFMT","AIRVALFMT","AIRVALFMT","AIRVALFMT"\n"
 
 #define ODOMVALFORMAT "%.1f"
 #define ODOM_FORMAT "%c:%c:"ODOMVALFORMAT","ODOMVALFORMAT","ODOMVALFORMAT","ODOMVALFORMAT","ODOMVALFORMAT","ODOMVALFORMAT"\n"
@@ -67,7 +67,7 @@ static char in_buffer[MAX_BUFFER_DATA];
 //-------------------------------------------------------------------------------------------------
 static ODOM_STATE OdomState;
 
-extern uint8_t odom_enabled;
+static uint8_t odom_enabled;
 #define ENABLE_ODOM()     (odom_enabled = 1)
 #define IS_ODOM_ENABLED() (odom_enabled == 1)
 
@@ -103,10 +103,9 @@ typedef struct _Operational_State
     uint8_t last_y;
     uint8_t last_heading;
     
-    // These variables convey op state to ROS
-    float left_motor_power;
-    float right_motor_power;
-    uint8_t ac_power;
+    // I'm still not sure what information this is trying to convey, that there is ac power?
+    // Is it a statement or question?
+    uint8_t ac_power;    
 } OP_STATE;
 
 // Shared variables - These variables are shared with the Odometry cog
@@ -134,8 +133,12 @@ static void SendStatusMessage(char type)
                    STATUS_MSG_TYPE_ODOM,
                    OdomState.x_dist, 
                    OdomState.y_dist, 
-                   OdomState.heading, 
-                   ImuState.heading, 
+                   OdomState.heading,
+                   #if 0
+                   ImuState.heading,
+                   #else
+                   0.0,
+                   #endif
                    OdomState.linear_speed, 
                    OdomState.angular_speed);
                    
@@ -157,7 +160,15 @@ static void SendStatusMessage(char type)
                    SensorState.analog_ir[4],
                    SensorState.analog_ir[5],
                    SensorState.analog_ir[6],
-                   SensorState.analog_ir[7]);
+                   SensorState.analog_ir[7],
+                   SensorState.analog_ir[8],
+                   SensorState.analog_ir[9],
+                   SensorState.analog_ir[10],
+                   SensorState.analog_ir[11],
+                   SensorState.analog_ir[12],
+                   SensorState.analog_ir[13],
+                   SensorState.analog_ir[14],
+                   SensorState.analog_ir[15]);
             send_message = 1;
             break;
             
@@ -220,8 +231,10 @@ static void SendStatusMessage(char type)
                    OpState.max_forward_speed,
                    OpState.max_reverse_speed,
                    SafetyState.min_distance_sensor,
-                   OpState.left_motor_power,
-                   OpState.right_motor_power,
+                   SensorState.left_motor_voltage,
+                   SensorState.right_motor_voltage,
+                   SensorState.left_motor_current,
+                   SensorState.right_motor_current,
                    SafetyState.cliff_detected,
                    SafetyState.floor_obstacle_detected);
             send_message = 1;
@@ -467,9 +480,6 @@ static void Init()
     
     OpState.max_forward_speed = DEFAULT_MAX_SPEED;
     OpState.max_reverse_speed = DEFAULT_MAX_SPEED;
-    
-    OpState.left_motor_power = 0;
-    OpState.right_motor_power = 0;    
 }
 
 static void Config()
@@ -499,16 +509,13 @@ static void Start()
     TURN_ON_MOTORS();
 }
 
-static float CalcHeading(IMU_STATE* state)
-{
-    return 0;
-}
-
 static void CheckEnvironment()
 {
     GetSensorState(&SensorState);
     UpdateSafety(&SensorState, &SafetyState);
+    #if 0
     GetImuState(&ImuState);
+    #endif
     GetOdomState(&OdomState);
     
         
@@ -516,6 +523,7 @@ static void CheckEnvironment()
     // That could be done here.  First, get ImuState, then OdomState and then assign.
 
     // Check the safety state to ensure the robot doesn't run into anything
+    // Note: We don't check angular velocity because being able to turn in place is a valuable method getting out of a tough spot.
     if ( (commanded_linear_velocity > 0 && !SafetyState.safe_to_proceed) || (commanded_linear_velocity < 0 && !SafetyState.safe_to_recede))
     {
         commanded_linear_velocity = 0.0;
@@ -530,11 +538,7 @@ static void CheckEnvironment()
     {
         commanded_linear_velocity = 0.0;
         commanded_angular_velocity = 0.0;
-    }
-    
-    // Ultimately we will monitor the motor voltages and report them, for now, just fake it so ROS is happy
-    OpState.left_motor_power = 4.69;
-    OpState.right_motor_power = 4.69;        
+    }    
 }
 
 static void UpdateMotorSpeed()

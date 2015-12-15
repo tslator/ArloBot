@@ -38,6 +38,7 @@ operational_state = SerialMessage(SerialMessage.CONFIG_OP_STATE_COMMAND, [0,0,0,
 dataReceiver = None
 configured = False
 safety_enable = True
+enable_odometry_print = False
 
 def ShowOpState():
     print(op_state)
@@ -190,7 +191,8 @@ def _handle_received_line(line):
 
         elif msg.msg_type == SerialMessage.STATUS_ODOMETRY_MESSAGE:
             odometry = line
-            #print(delta, ": ", odometry)
+            if enable_odometry_print:
+                print(delta, ": ", odometry)
         elif msg.msg_type == SerialMessage.STATUS_ANALOG_IR_SENSOR_MESSAGE:
             analog_ir_sensor = line
             #print(delta, ": ", analog_ir_sensor)
@@ -220,6 +222,7 @@ def main():
     global analog_ir_sensor
     global digital_ir_sensor
     global ultrasonic_sensor
+    global enable_odometry_print
 
     dataReceiver = SerialDataGateway(PORT, 115200, _handle_received_line)
     dataReceiver.Start()
@@ -258,10 +261,14 @@ def main():
             print(op_state)
         elif 'm' in result:
             cmd, vel = result.split(':')
+            enable_odometry_print = True
             DoMove(vel)
+            enable_odometry_print = False
         elif 't' in result:
             cmd, num = result.split(':')
+            enable_odometry_print = True
             Test(int(num))
+            enable_odometry_print = False
         elif result == 'x':
             DoMove("0.0,0.0")
             done = True

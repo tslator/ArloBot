@@ -78,15 +78,16 @@
 #define MOTION_DETECT (13)
 
 // Motors Relay
-#define MOTORS_RELAY (14) // Note: one pin can drive the left and right motor relays
+// Note: one pin can drive the left and right motor relays. No reason to turn just one or the other on
+#define MOTORS_RELAY (14) 
 #define MOTORS_ON    (HIGH)
 #define MOTORS_OFF   (LOW)
 
 //--------------------------------------------------------------------------
 // Sensor Configuration
 //--------------------------------------------------------------------------
-#define NUM_ANALOG_IR_SENSORS (8)
-#define NUM_DIGITAL_IR_SENSORS (5)
+#define NUM_ANALOG_IR_SENSORS (16)
+#define NUM_DIGITAL_IR_SENSORS (6)
 #define NUM_ULTRASONIC_SENSORS (16)
 
 #endif

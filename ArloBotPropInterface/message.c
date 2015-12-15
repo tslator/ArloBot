@@ -23,7 +23,9 @@ static volatile MESSAGE_BUFFER outgoing_msg;
 static MESSAGE_BUFFER echo_msg;
 #endif
 static fdserial *msg_serial;
-static int msg_stack[128];
+// Note: This stack setting is at the very edge of working.  Be careful adding new functionality.
+// Note: If the serial communication fails, the stack isn't big enough.
+static int msg_stack[40 + 88];
 static int lock;
 
 

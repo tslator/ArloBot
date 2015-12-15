@@ -37,6 +37,12 @@ class SerialMessage():
     __DRIVE_GEOMETRY_MESSAGE_TYPE = 'c'
     __OP_STATE_MESSAGE_TYPE = 'c'
 
+    STATUS_ULTRASONIC_SENSOR_PAYLOAD_LENGTH = 16
+    STATUS_ANALOG_IR_SENSOR_PAYLOAD_LENGTH = 16
+    STATUS_DIGITAL_IR_SENSOR_PAYLOAD_LENGTH = 6
+    STATUS_OP_STATE_PAYLOAD_LENGTH = 15
+
+
     def __str__(self):
         return "Class: {}, Type: {}, Payload: {}".format(self.msg_class, self.msg_type, str(self.payload))
 
@@ -142,7 +148,7 @@ class SerialMessage():
                 self.floor_obstacle_detected = 0
 
                 self.payload = msg_data.split(',')
-                if len(self.payload) == 13:
+                if len(self.payload) == self.STATUS_OP_STATE_PAYLOAD_LENGTH:
                     offset = 0
                     self.drive_geometry_received = int(self.payload[offset])
                     offset += 1
@@ -160,11 +166,15 @@ class SerialMessage():
                     offset += 1
                     self.max_reverse_speed = int(self.payload[offset])
                     offset += 1
-                    self.min_distance_sensor = int(self.payload[offset])
+                    self.min_distance_sensor = self.__float_convert(self.payload[offset])
                     offset += 1
                     self.left_motor_voltage = self.__float_convert(self.payload[offset])
                     offset += 1
                     self.right_motor_voltage = self.__float_convert(self.payload[offset])
+                    offset += 1
+                    self.left_motor_current = self.__float_convert(self.payload[offset])
+                    offset += 1
+                    self.right_motor_current = self.__float_convert(self.payload[offset])
                     offset += 1
                     self.cliff_detected = int(self.payload[offset])
                     offset += 1
@@ -178,7 +188,7 @@ class SerialMessage():
                 self.msg_type = self.STATUS_ANALOG_IR_SENSOR_MESSAGE
 
                 self.payload = msg_data.split(',')
-                if len(self.payload) == 8:
+                if len(self.payload) == self.STATUS_ANALOG_IR_SENSOR_PAYLOAD_LENGTH:
                     pass
                 else:
                     raise SerialMessageError("Wrong number of parameters for Analog IR message")
@@ -189,7 +199,7 @@ class SerialMessage():
                 self.msg_type = self.STATUS_ULTRASONIC_SENSOR_MESSAGE
                 
                 self.payload = msg_data.split(',')
-                if len(self.payload) == 16:
+                if len(self.payload) == self.STATUS_ULTRASONIC_SENSOR_PAYLOAD_LENGTH:
                     # Nothing else to do, unless there is a need to create other representations
                     # of the sensors values, e.g., a dictionary
                     pass
@@ -201,7 +211,7 @@ class SerialMessage():
                 self.msg_type = self.STATUS_DIGITAL_IR_SENSOR_MESSAGE
 
                 self.payload = msg_data.split(',')
-                if len(self.payload) == 6:
+                if len(self.payload) == self.STATUS_DIGITAL_IR_SENSOR_PAYLOAD_LENGTH:
                     pass
                 else:
                     raise SerialMessageError("Wrong number of parameters for Analog IR message")

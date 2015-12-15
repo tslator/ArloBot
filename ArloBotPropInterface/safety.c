@@ -5,7 +5,7 @@
 // Mapping for sensors
 // Index 0 - 15 are Ultrasonic sensors (see hwconfig.h)
 #define ULTRASONIC_START (0)
-#define ULTRASONIC_END (15)
+#define ULTRASONIC_END (NUM_ULTRASONIC_SENSORS - 1)
 
 //   Index 0 - 7 are front sensors
 //       Index 0 - 4 are lower deck
@@ -18,14 +18,14 @@
 #define ULTRASONIC_FRONT_LOWER_START (ULTRASONIC_FRONT_START)
 #define ULTRASONIC_FRONT_LOWER_END (ULTRASONIC_FRONT_LOWER_START + NUM_ULTRASONIC_FRONT_LOWER - 1)
 
-#define NUM_ULTRASONIC_FRONT_MID (3)
+#define NUM_ULTRASONIC_FRONT_MID (NUM_ULTRASONIC_FRONT - NUM_ULTRASONIC_FRONT_LOWER)
 #define ULTRASONIC_FRONT_MID_START (ULTRASONIC_FRONT_LOWER_END + 1)
 #define ULTRASONIC_FRONT_MID_END (ULTRASONIC_FRONT_MID_START + NUM_ULTRASONIC_FRONT_MID - 1)
 
 //   Index 8 - 15 are rear sensors
 //       Index 8 - 12 are lower deck
 //       Index 13 - 15 are mid deck
-#define NUM_ULTRASONIC_REAR (8)
+#define NUM_ULTRASONIC_REAR (NUM_ULTRASONIC_SENSORS - NUM_ULTRASONIC_FRONT)
 #define ULTRASONIC_REAR_START (ULTRASONIC_START + NUM_ULTRASONIC_FRONT)
 #define ULTRASONIC_REAR_END (ULTRASONIC_REAR_START + NUM_ULTRASONIC_REAR - 1)
 
@@ -33,23 +33,48 @@
 #define ULTRASONIC_REAR_LOWER_START (ULTRASONIC_REAR_START)
 #define ULTRASONIC_REAR_LOWER_END (ULTRASONIC_REAR_LOWER_START + NUM_ULTRASONIC_REAR_LOWER - 1)
 
-#define NUM_ULTRASONIC_REAR_MID (3)
+#define NUM_ULTRASONIC_REAR_MID (NUM_ULTRASONIC_REAR - NUM_ULTRASONIC_REAR_LOWER)
 #define ULTRASONIC_REAR_MID_START (ULTRASONIC_REAR_LOWER_END + 1)
 #define ULTRASONIC_REAR_MID_END (ULTRASONIC_REAR_MID_START + NUM_ULTRASONIC_REAR_MID - 1)
 
-// Index 0 - 7 are Analog IR sensors
+// Index 0 - 15 are Analog IR sensors
 #define ANALOG_IR_START (0)
-#define ANALOG_IR_END (7)
+#define ANALOG_IR_END (NUM_ANALOG_IR_SENSORS - 1)
 
-//   Index 0 - 3 are front sensors - all are on underside of top deck
-//   Index 4 - 7 are rear sensors - all are on underside of top deck
-#define NUM_ANALOG_IR_FRONT (4)
+//   Index 0 - 1 are front lower sensors
+//   Index 2 - 4 are front mid sensors
+//   Index 5 - 7 are front upper
+#define NUM_ANALOG_IR_FRONT (8)
 #define ANALOG_IR_FRONT_START (ANALOG_IR_START)
 #define ANALOG_IR_FRONT_END (ANALOG_IR_FRONT_START + NUM_ANALOG_IR_FRONT - 1)
 
-#define NUM_ANALOG_IR_REAR (4)
-#define ANALOG_IR_REAR_START (ANALOG_IR_FRONT_END + 1)
+#define NUM_ANALOG_IR_FRONT_LOWER (2)
+#define ANALOG_IR_FRONT_LOWER_START (ANALOG_IR_FRONT_START)
+#define ANALOG_IR_FRONT_LOWER_END (ANALOG_IR_FRONT_LOWER_START + NUM_ANALOG_IR_FRONT_LOWER - 1)
+
+#define NUM_ANALOG_IR_FRONT_MID (3)
+#define ANALOG_IR_FRONT_MID_START (ANALOG_IR_FRONT_LOWER_END + 1)
+#define ANALOG_IR_FRONT_MID_END (ANALOG_IR_FRONT_MID_START + NUM_ANALOG_IR_FRONT_MID - 1)
+
+#define NUM_ANALOG_IR_FRONT_UPPER (3)
+#define ANALOG_IR_FRONT_UPPER_START (ANALOG_IR_FRONT_MID_END + 1)
+#define ANALOG_IR_FRONT_UPPER_END (ANALOG_IR_FRONT_UPPER_START + NUM_ANALOG_IR_FRONT_UPPER - 1)
+
+#define NUM_ANALOG_IR_REAR (8)
+#define ANALOG_IR_REAR_START (ANALOG_IR_START + NUM_ANALOG_IR_FRONT)
 #define ANALOG_IR_REAR_END (ANALOG_IR_REAR_START + NUM_ANALOG_IR_REAR - 1)
+
+#define NUM_ANALOG_IR_REAR_LOWER (2)
+#define ANALOG_IR_READ_LOWER_START (ANALOG_IR_REAR_START)
+#define ANALOG_IR_READ_LOWER_END (ANALOG_IR_READ_LOWER_START + NUM_ANALOG_IR_REAR_LOWER - 1)
+
+#define NUM_ANALOG_IR_REAR_MID (3)
+#define ANALOG_IR_READ_MID_START (ANALOG_IR_READ_LOWER_END + 1)
+#define ANALOG_IR_READ_MID_END (ANALOG_IR_READ_MID_START + NUM_ANALOG_IR_REAR_MID - 1)
+
+#define NUM_ANALOG_IR_REAR_UPPER (3)
+#define ANALOG_IR_READ_UPPER_START (ANALOG_IR_READ_MID_END + 1)
+#define ANALOG_IR_READ_UPPER_END (ANALOG_IR_READ_UPPER_START + NUM_ANALOG_IR_REAR_UPPER - 1)
 
 // Index 0 - 5 are Digital IR sensors
 #define DIGITAL_IR_START (0)
@@ -65,7 +90,7 @@
 
 // Cliff Sensors
 // Note: Some (actually all) of the IR sensors are allocated to function as cliff sensors.  The difference between a "distance" sensor and a "cliff" sensor
-// if the actual distance checked.  The "cliff" sensor distance value is further than the "distance" sensor value.
+// is the actual distance checked.  The "cliff" sensor distance value is further than the "distance" sensor value.
 #define NUM_CLIFF_FRONT (NUM_ANALOG_IR_FRONT)
 #define CLIFF_FRONT_START (ANALOG_IR_FRONT_START)
 #define CLIFF_FRONT_END (ANALOG_IR_FRONT_END)
@@ -119,11 +144,14 @@ static void CheckDistance(float* sensors, uint8_t start, uint8_t end, float min_
         {
             *result |= 1 << ii;
         }
+        // Find the minimum of all the sensors
         if (sensors[ii] < min_dist)
         {
             min_dist = sensors[ii];
         }
     }
+    
+    *sensor_dist = min_dist;
 }
 
 static void CheckCliffSensors(SENSOR_STATE* sensor_state, SAFETY_STATE* safety_state)
@@ -244,5 +272,9 @@ void UpdateSafety(SENSOR_STATE* sensor_state, SAFETY_STATE* safety_state)
             safety_state->safe_to_proceed = 0;
             safety_state->safe_to_recede = 0;
         }
+        
+        // Future Checks
+        // When the motor voltage/current sensors are running, we might want to perform some 
+        // safety checking on the voltage and current.
     }
 }
