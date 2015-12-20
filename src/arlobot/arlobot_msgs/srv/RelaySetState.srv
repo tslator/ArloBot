@@ -1,0 +1,5 @@
+string Name
+bool CommandedState
+---
+bool ActualState
+bool Success
