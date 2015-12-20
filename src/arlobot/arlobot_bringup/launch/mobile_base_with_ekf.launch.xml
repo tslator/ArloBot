@@ -5,7 +5,7 @@
  -->
 <launch>
   <!-- Turtlebot Driver -->
-  <node pkg="arlobot_bringup" type="propellerbot_node.py" name="arlobot" respawn="true" args="--respawnable">
+  <node pkg="arlobot_bringup" type="arlobot_node.py" name="arlobot" respawn="true" args="--respawnable">
     <param name="bonus" value="false" />
     <param name="update_rate" value="30.0" />
     <param name="port" value="/dev/ttyUSB0" />

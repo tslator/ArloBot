@@ -1,2 +1,2 @@
-bool    relayPresent
-bool[]  relayOn
+string[] Names
+bool[] States

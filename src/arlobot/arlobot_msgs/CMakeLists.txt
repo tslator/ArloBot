@@ -61,6 +61,10 @@ add_service_files(
   UnPlug.srv
   pause_explorer.srv
   go_to_goal.srv
+  RelayEnumerate.srv
+  RelayResetSequence.srv
+  RelaySetState.srv
+  RelayToggle.srv
 )
 
 ## Generate actions in the 'action' folder

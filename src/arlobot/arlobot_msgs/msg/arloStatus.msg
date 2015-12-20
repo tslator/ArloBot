@@ -6,11 +6,9 @@ int16     abdR_speedLimit
 float32   Heading
 float32   gyroHeading
 int16     minDistanceSensor
-bool      leftMotorPower
-bool      rightMotorPower
-float32   robotBatteryLevel
-bool      robotBatteryLow
-int16     laptopBatteryPercent
-bool      acPower
-bool      cliff
-bool      floorObstacle
+float32   leftMotorVoltage
+float32   leftMotorCurrent
+float32   rightMotorVoltage
+float32   rightMotorCurrent
+bool      cliffDetected
+bool      floorObstacleDetected
