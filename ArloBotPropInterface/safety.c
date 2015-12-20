@@ -1,519 +1,280 @@
+#include <simpletools.h>
+
 #include "safety.h"
-#include "distance.h"
 
-static int blockedSensor[NUMBER_OF_PING_SENSORS] = {0};
-static int i;
-static int blockedF = 0
-static int blockedR = 0
-static int foundCliff = 0
-static int floorObstacle = 0
-static int pleaseEscape = 0
-static int minDistance = 255
-static int minRDistance = 255
-static int newSpeedLimit = 100;
+// Mapping for sensors
+// Index 0 - 15 are Ultrasonic sensors (see hwconfig.h)
+#define ULTRASONIC_START (0)
+#define ULTRASONIC_END (NUM_ULTRASONIC_SENSORS - 1)
 
-extern int speedLeft, speedRight, throttleStatus = 0;
+//   Index 0 - 7 are front sensors
+//       Index 0 - 4 are lower deck
+//       Index 5 - 9 are mid deck
+#define NUM_ULTRASONIC_FRONT (8)
+#define ULTRASONIC_FRONT_START (ULTRASONIC_START)
+#define ULTRASONIC_FRONT_END (ULTRASONIC_FRONT_START + NUM_ULTRASONIC_FRONT - 1)
+
+#define NUM_ULTRASONIC_FRONT_LOWER (5)
+#define ULTRASONIC_FRONT_LOWER_START (ULTRASONIC_FRONT_START)
+#define ULTRASONIC_FRONT_LOWER_END (ULTRASONIC_FRONT_LOWER_START + NUM_ULTRASONIC_FRONT_LOWER - 1)
+
+#define NUM_ULTRASONIC_FRONT_MID (NUM_ULTRASONIC_FRONT - NUM_ULTRASONIC_FRONT_LOWER)
+#define ULTRASONIC_FRONT_MID_START (ULTRASONIC_FRONT_LOWER_END + 1)
+#define ULTRASONIC_FRONT_MID_END (ULTRASONIC_FRONT_MID_START + NUM_ULTRASONIC_FRONT_MID - 1)
+
+//   Index 8 - 15 are rear sensors
+//       Index 8 - 12 are lower deck
+//       Index 13 - 15 are mid deck
+#define NUM_ULTRASONIC_REAR (NUM_ULTRASONIC_SENSORS - NUM_ULTRASONIC_FRONT)
+#define ULTRASONIC_REAR_START (ULTRASONIC_START + NUM_ULTRASONIC_FRONT)
+#define ULTRASONIC_REAR_END (ULTRASONIC_REAR_START + NUM_ULTRASONIC_REAR - 1)
+
+#define NUM_ULTRASONIC_REAR_LOWER (5)
+#define ULTRASONIC_REAR_LOWER_START (ULTRASONIC_REAR_START)
+#define ULTRASONIC_REAR_LOWER_END (ULTRASONIC_REAR_LOWER_START + NUM_ULTRASONIC_REAR_LOWER - 1)
+
+#define NUM_ULTRASONIC_REAR_MID (NUM_ULTRASONIC_REAR - NUM_ULTRASONIC_REAR_LOWER)
+#define ULTRASONIC_REAR_MID_START (ULTRASONIC_REAR_LOWER_END + 1)
+#define ULTRASONIC_REAR_MID_END (ULTRASONIC_REAR_MID_START + NUM_ULTRASONIC_REAR_MID - 1)
+
+// Index 0 - 15 are Analog IR sensors
+#define ANALOG_IR_START (0)
+#define ANALOG_IR_END (NUM_ANALOG_IR_SENSORS - 1)
+
+//   Index 0 - 1 are front lower sensors
+//   Index 2 - 4 are front mid sensors
+//   Index 5 - 7 are front upper
+#define NUM_ANALOG_IR_FRONT (8)
+#define ANALOG_IR_FRONT_START (ANALOG_IR_START)
+#define ANALOG_IR_FRONT_END (ANALOG_IR_FRONT_START + NUM_ANALOG_IR_FRONT - 1)
+
+#define NUM_ANALOG_IR_FRONT_LOWER (2)
+#define ANALOG_IR_FRONT_LOWER_START (ANALOG_IR_FRONT_START)
+#define ANALOG_IR_FRONT_LOWER_END (ANALOG_IR_FRONT_LOWER_START + NUM_ANALOG_IR_FRONT_LOWER - 1)
+
+#define NUM_ANALOG_IR_FRONT_MID (3)
+#define ANALOG_IR_FRONT_MID_START (ANALOG_IR_FRONT_LOWER_END + 1)
+#define ANALOG_IR_FRONT_MID_END (ANALOG_IR_FRONT_MID_START + NUM_ANALOG_IR_FRONT_MID - 1)
+
+#define NUM_ANALOG_IR_FRONT_UPPER (3)
+#define ANALOG_IR_FRONT_UPPER_START (ANALOG_IR_FRONT_MID_END + 1)
+#define ANALOG_IR_FRONT_UPPER_END (ANALOG_IR_FRONT_UPPER_START + NUM_ANALOG_IR_FRONT_UPPER - 1)
+
+#define NUM_ANALOG_IR_REAR (8)
+#define ANALOG_IR_REAR_START (ANALOG_IR_START + NUM_ANALOG_IR_FRONT)
+#define ANALOG_IR_REAR_END (ANALOG_IR_REAR_START + NUM_ANALOG_IR_REAR - 1)
+
+#define NUM_ANALOG_IR_REAR_LOWER (2)
+#define ANALOG_IR_READ_LOWER_START (ANALOG_IR_REAR_START)
+#define ANALOG_IR_READ_LOWER_END (ANALOG_IR_READ_LOWER_START + NUM_ANALOG_IR_REAR_LOWER - 1)
+
+#define NUM_ANALOG_IR_REAR_MID (3)
+#define ANALOG_IR_READ_MID_START (ANALOG_IR_READ_LOWER_END + 1)
+#define ANALOG_IR_READ_MID_END (ANALOG_IR_READ_MID_START + NUM_ANALOG_IR_REAR_MID - 1)
+
+#define NUM_ANALOG_IR_REAR_UPPER (3)
+#define ANALOG_IR_READ_UPPER_START (ANALOG_IR_READ_MID_END + 1)
+#define ANALOG_IR_READ_UPPER_END (ANALOG_IR_READ_UPPER_START + NUM_ANALOG_IR_REAR_UPPER - 1)
+
+// Index 0 - 5 are Digital IR sensors
+#define DIGITAL_IR_START (0)
+#define DIGITAL_IR_END (5)
+
+#define NUM_DIGITAL_IR_FRONT (3)
+#define DIGITAL_IR_FRONT_START (DIGITAL_IR_START)
+#define DIGITAL_IR_FRONT_END (DIGITAL_IR_FRONT_START + NUM_DIGITAL_IR_FRONT - 1)
+
+#define NUM_DIGITAL_IR_REAR (3)
+#define DIGITAL_IR_REAR_START (DIGITAL_IR_FRONT_END + 1)
+#define DIGITAL_IR_REAR_END (DIGITAL_IR_REAR_START + NUM_DIGITAL_IR_REAR - 1)
+
+// Cliff Sensors
+// Note: Some (actually all) of the IR sensors are allocated to function as cliff sensors.  The difference between a "distance" sensor and a "cliff" sensor
+// is the actual distance checked.  The "cliff" sensor distance value is further than the "distance" sensor value.
+#define NUM_CLIFF_FRONT (NUM_ANALOG_IR_FRONT)
+#define CLIFF_FRONT_START (ANALOG_IR_FRONT_START)
+#define CLIFF_FRONT_END (ANALOG_IR_FRONT_END)
+
+#define NUM_CLIFF_REAR (NUM_ANALOG_IR_REAR)
+#define CLIFF_REAR_START (ANALOG_IR_REAR_START)
+#define CLIFF_REAR_END (ANALOG_IR_REAR_END)
+
+// Floor Obstacle Sensors
+// As it relates to safety, the digital IR sensors can be used to detect floor objects
+#define NUM_FLOOR_OBSTACLE_FRONT (NUM_DIGITAL_IR_FRONT)
+#define FLOOR_OBSTACLE_FRONT_START (DIGITAL_IR_FRONT_START)
+#define FLOOR_OBSTACLE_FRONT_END (DIGITAL_IR_FRONT_END)
+
+#define NUM_FLOOR_OBSTACLE_REAR (NUM_DIGITAL_IR_REAR)
+#define FLOOR_OBSTACLE_REAR_START (DIGITAL_IR_REAR_START)
+#define FLOOR_OBSTACLE_REAR_END (DIGITAL_IR_REAR_END)
 
 
-// Use a cog to squelch incoming commands and perform safety procedures like halting, backing off, avoiding cliffs, calling for help, etc.
-// This can use proximity sensors to detect obstacles (including people) and cliffs
-// This can use the gyro to detect tipping
-// This can use the gyro to detect significant heading errors due to slipping wheels when an obstacle is encountered or high centered
-static int safetyOverrideStack[128]; // If things get weird make this number bigger!
+#define ULTRASONIC_MIN_SAFE_DISTANCE (6.0) // in centimeters
+#define ANALOG_IR_MIN_SAFE_DISTANCE (6.0)  // in centimeters
+#define CLIFF_MIN_SAFE_DISTANCE (50.0)     // in centimeters
+#define MAX_DISTANCE (1000.0)              // in centimeters
 
 
-typedef struct
+static void CheckDetect(uint8_t* sensors, uint8_t start, uint8_t end, uint32_t* result)
 {
-    int found;
-    int* ignore;
-    uint8_t first;
-    uint8_t last;
+    uint8_t ii;
     
-} FIND_A_GOOD_NAME_TYPE;
-
-void CS_Evalulate()
-{
-#ifdef hasCliffSensors
-    foundCliff = 0;
-    if (ignoreCliffSensors == 0) {
-        // Check Cliff Sensors first
-        for (i = FIRST_CLIFF_SENSOR; i < FIRST_CLIFF_SENSOR + NUMBER_OF_CLIFF_SENSORS; i++) {
-            if (ir_distances[i] > FLOOR_DISTANCE) {
-                safeToProceed = 0; // Prevent main thread from setting any drive_speed
-                // Stop robot if it is currently moving forward and not escaping
-                // TODO: Can we "chase" the robot off of a cliff, because the rear sensor
-                // would put us into an "Escaping == 1" situation, but we would be moving forward
-                // OVER the cliff instead of back, and thus really need to stop now?!
-                if ((Escaping == 0) && ((speedLeft + speedRight) > 0)) {
-                    drive_speed(0, 0);
-                }
-                // Use this to give the "all clear" later if it never gets set
-                blockedF = 1;
-                // Use this to clear the 'cliff' variable later if this never gets set.
-                foundCliff = 1;
-                // Set the global 'cliff' variable so we can see this in ROS.
-                cliff = 1;
-                blockedSensor[2] = 1; // Pretend this is the front sensor, since it needs to back up NOW!
-                pleaseEscape = 1;
-            }
-        }
-    }
-    // Clear the global 'cliff' variable if no cliff was seen.
-    if (foundCliff == 0) {
-        cliff = 0;
-    }
-#endif
-}
-
-void FOS_Evaulate()
-{
-#ifdef hasFloorObstacleSensors
-    floorObstacle = 0;
-    if (ignoreFloorSensors == 0) {
-      for (i = 0; i < NUMBER_OF_FLOOR_SENSORS; i++) {
-        if (floorArray[i] == 0) {
-          safeToProceed = 0; // Prevent main thread from setting any drive_speed
-          // Stop robot if it is currently moving forward and not escaping
-          // TODO: Can we "chase" the robot off of a cliff, because the rear sensor
-          // would put us into an "Escaping == 1" situation, but we would be moving forward
-          // OVER the cliff instead of back, and thus really need to stop now?!
-          if ((Escaping == 0) && ((speedLeft + speedRight) > 0)) {
-            drive_speed(0, 0);
-          }
-          // Use this to give the "all clear" later if it never gets set
-          blockedF = 1;
-          // Use this to clear the 'floorO' variable later if this never gets set.
-          floorObstacle = 1;
-          // Set the global 'floorO' variable so we can see this in ROS.
-          floorO = 1;
-          blockedSensor[2] = 1; // Pretend this is the front sensor, since it needs to back up NOW!
-          pleaseEscape = 1;
-          }
-      }
-    }
-    // Clear the global 'floorO' variable if no floor obstacle was seen.
-    if (floorObstacle == 0) {
-        floorO = 0;
-    }
-#endif
-}
-
-void FPS_Evaulate()
-{
-#ifdef hasFrontPingSensors
-    // Walk Front PING Sensors to find blocked paths and halt immediately
-    for (i = FIRST_FRONT_PING_SENSOR_NUMBER; i < HOW_MANY_FRONT_PING_SENSORS + FIRST_FRONT_PING_SENSOR_NUMBER; i++) {
-        // PING Sensors
-        if (us_distances[i] < startSlowDownDistance[i]) {
-            if (us_distances[i] <= haltDistance[i] + 1) { // Halt just before.
-                safeToProceed = 0; // Prevent main thread from setting any drive_speed
-                // Stop robot if it is currently moving forward and not escaping
-                if ((Escaping == 0) && ((speedLeft + speedRight) > 0)) {
-                    drive_speed(0, 0);
-                }
-                blockedF = 1; // Use this to give the "all clear" later if it never gets set
-                blockedSensor[i] = 1; // Keep track of which sensors are blocked for intelligent escape sequences.
-                // Escape just after, to try make a buffer to avoid back and forthing.
-                if (us_distances[i] < haltDistance[i]) {
-                    pleaseEscape = 1;
-                }
-            }
-            // For speed restriction:
-            if (us_distances[i] < minDistance) {
-                minDistance = us_distances[i];
-                minDistanceSensor = i;
-            }
-        }
-    }
-#endif
-}
-
-void FUDS_Evaulate()
-{
-#ifdef hasFrontUpperDeckSensors
-    // Walk Upper Deck Sensors
-    for (i = FIRST_FRONT_UPPER_SENSOR_NUMBER; i < HOW_MANY_FRONT_UPPER_SENSORS + FIRST_FRONT_UPPER_SENSOR_NUMBER; i++) {
-        // PING Sensors
-        if (us_distances[i] < startSlowDownDistance[i]) {
-            // Halt just before.
-            if (us_distances[i] <= haltDistance[i] + 1) {
-                // Prevent main thread from setting any drive_speed
-                safeToProceed = 0;
-                // Stop robot if it is currently moving forward and not escaping
-                if ((Escaping == 0) && ((speedLeft + speedRight) > 0)) {
-                    drive_speed(0, 0);
-                }
-                 // Use this to give the "all clear" later if it never gets set
-                blockedF = 1;
-                 // Keep track of which sensors are blocked for intelligent escape sequences.
-                blockedSensor[i] = 1;
-                if (us_distances[i] < haltDistance[i]) {
-                    // Escape just after, to try make a buffer to avoid back and forthing.
-                    pleaseEscape = 1;
-                }
-            }
-            // For speed restriction:
-            if (us_distances[i] < minDistance) {
-                minDistance = us_distances[i];
-                minDistanceSensor = i;
-            }
-        }
-    }
-#endif
-}
-
-void RPS_Evaulate()
-{
-#ifdef hasRearPingSensors
-    // Walk REAR Sensor Array to find blocked paths and halt immediately
-    for (i = FIRST_REAR_PING_SENSOR_NUMBER; i < FIRST_REAR_PING_SENSOR_NUMBER + HOW_MANY_REAR_PING_SENSORS; i++) {
-        if (us_distances[i] < startSlowDownDistance[i]) {
-            if (us_distances[i] <= haltDistance[i] + 1) { // Halt just before.
-                safeToRecede = 0; // Prevent main thread from setting any drive_speed
-                // Stop robot if it is currently moving forward and not escaping
-                if ((Escaping == 0) && ((speedLeft + speedRight) < 0)) {
-                    drive_speed(0, 0);
-                }
-                blockedR = 1; // Use this to give the "all clear" later if it never gets set
-                blockedSensor[i] = 1; // Keep track of which sensors are blocked for intelligent escape sequences.
-                if (us_distances[i] < haltDistance[i]) // Escape just after, to try make a buffer to avoid back and forthing.
-                    pleaseEscape = 1;
-            }
-            // For speed restriction:
-            if (us_distances[i] < minRDistance) {
-                minRDistance = us_distances[i];
-                minDistanceSensor = i;
-            }
-        }
-    }
-#endif
-}
-
-void RUDS_Evaulate()
-{
-#ifdef hasRearUpperDeckSensors
-    for (i = FIRST_REAR_UPPER_SENSOR_NUMBER; i < FIRST_REAR_UPPER_SENSOR_NUMBER + HOW_MANY_REAR_UPPER_SENSORS; i++) { // Only use the rear sensors
-        // PING Sensors
-        if (us_distances[i] < startSlowDownDistance[i]) {
-            if (us_distances[i] <= haltDistance[i] + 1) { // Halt just before.
-                safeToRecede = 0; // Prevent main thread from setting any drive_speed
-                // Stop robot if it is currently moving forward and not escaping
-                if ((Escaping == 0) && ((speedLeft + speedRight) < 0)) {
-                    drive_speed(0, 0);
-                }
-                blockedR = 1; // Use this to give the "all clear" later if it never gets set
-                blockedSensor[i] = 1; // Keep track of which sensors are blocked for intelligent escape sequences.
-                if (us_distances[i] < haltDistance[i]) // Escape just after, to try make a buffer to avoid back and forthing.
-                    pleaseEscape = 1;
-            }
-            // For speed restriction:
-            if (us_distances[i] < minRDistance) {
-                minRDistance = us_distances[i];
-                minDistanceSensor = i;
-            }
-        }
-    }
-#endif
-}
-
-void FIRS_Evaulate()
-{
-#ifdef hasFrontIRSensors
-    // Walk front IR Sensors
-    for (i = FIRST_FRONT_IR_SENSOR_NUMBER; i < HOW_MANY_FRONT_IR_SENSORS + FIRST_FRONT_IR_SENSOR_NUMBER; i++) {
-        if (ir_distances[i] < IRstartSlowDownDistance[i])  {
-            if (ir_distances[i] <= haltDistance[i] + 1) {
-                // Prevent main thread from setting any drive_speed
-                safeToProceed = 0;
-                // Stop robot if it is currently moving forward and not escaping
-                if ((Escaping == 0) && ((speedLeft + speedRight) > 0)) {
-                    drive_speed(0, 0);
-                }
-                // Use this to give the "all clear" later if it never gets set
-                blockedF = 1;
-                // Keep track of which sensors are blocked for intelligent escape sequences.
-                blockedSensor[i] = 1;
-                if (ir_distances[i] < haltDistance[i]) {
-                    pleaseEscape = 1;
-                }
-            }
-            // For speed restriction:
-            if (ir_distances[i] < minDistance) {
-                minDistance = ir_distances[i];
-                minDistanceSensor = i;
-            }
-        }
-    }
-#endif
-}
-
-void RIRS_Evaulate()
-{
-#ifdef hasRearIRSensors
-    for (i = FIRST_REAR_IR_SENSOR_NUMBER; i < FIRST_REAR_IR_SENSOR_NUMBER + HOW_MANY_REAR_IR_SENSORS; i++) {
-        #ifdef RENAME_REAR_IR_SENSOR
-        int sensorFakeIndex = RENAME_REAR_IR_SENSOR;
-        #else
-        int sensorFakeIndex = i;
-        #endif
-        if (ir_distances[i] < IRstartSlowDownDistance[i]) {
-            if (ir_distances[i] <= haltDistance[sensorFakeIndex] + 1) {
-                safeToRecede = 0; // Prevent main thread from setting any drive_speed
-                // Stop robot if it is currently moving forward and not escaping
-                if ((Escaping == 0) && ((speedLeft + speedRight) < 0)) {
-                    drive_speed(0, 0);
-                }
-                blockedR = 1; // Use this to give the "all clear" later if it never gets set
-                blockedSensor[sensorFakeIndex] = 1; // Keep track of which sensors are blocked for intelligent escape sequences.
-                if (ir_distances[i] < haltDistance[sensorFakeIndex])
-                    pleaseEscape = 1;
-            }
-            // For speed restriction:
-            if (ir_distances[i] < minRDistance) {
-                minRDistance = ir_distances[i];
-                minDistanceSensor = i;
-            }
-        }
-    }    
-#endif
-}
-
-/* TESTS:
-   1. Make sure output sensor readings to ROS are near real time.
-   2. Make sure "escape" operations are fast and accurate.
-   */
-static void safetyOverride(void *par) {
+    *result = 0;
     
-    int throttleRamp = 0;
-    
-    
-    while (1) {
-        if (ignoreProximity == 0) {
-            // Reset blockedSensor array to all zeros.
-            memset(blockedSensor, 0, sizeof(blockedSensor));
-            blockedF = 0;
-            blockedR = 0;
-            pleaseEscape = 0;
-            minDistance = 255;
-
-            CS_Evalulate();
-            FOS_Evaulate();
-            FPS_Evaulate();
-            FUDS_Evaulate();
-            RPS_Evaulate();
-            RUDS_Evaulate();
-
-            if (ignoreIRSensors == 0) {
-                FIRS_Evaulate();
-                RIRS_Evaulate();
-            }
-
-            // Reduce Speed Limit when we are close to an obstruction
-            /* EXPLANATION minDistance won't be set unless a given sensor is closer than its particular startSlowDownDistance value, so we won't be slowing down if sensor 0 is 40, only if it is under 10 */
-            if (minDistance < MAX_DISTANCE) {
-                // Set based on percentage of range
-                // TODO: Is this a good method?
-                newSpeedLimit = (minDistance - haltDistance[minDistanceSensor]) * (100 / (MAX_DISTANCE - haltDistance[minDistanceSensor]));
-                // Limit maximum and minimum speed.
-                if (newSpeedLimit < MINIMUM_SPEED) {
-                    newSpeedLimit = MINIMUM_SPEED;
-                } else if (newSpeedLimit > 100) {
-                    newSpeedLimit = 100;
-                }
-                // Ramp and limit affect of random hits
-                if (newSpeedLimit > abd_speedLimit) {
-                    if (throttleRamp == THROTTLE_STOP) {
-                        abd_speedLimit = abd_speedLimit + 1;
-                    }
-                } else if (newSpeedLimit < abd_speedLimit) {
-                    if (throttleRamp == THROTTLE_STOP) {
-                        abd_speedLimit = abd_speedLimit - 1;
-                    }
-                }
-            } else {
-                // Ramp return to full if all obstacles are clear
-                if (abd_speedLimit < 100) {
-                    if (throttleRamp == THROTTLE_STOP) // Slow ramping down
-                        abd_speedLimit = abd_speedLimit + 1;
-                }
-            }
-
-            // Same for REVERSE Speed Limit
-            if (minRDistance < MAX_DISTANCE) {
-                // Set based on percentage of range
-                // TODO: Is this a good method?
-                newSpeedLimit = (minRDistance - haltDistance[minDistanceSensor]) * (100 / (MAX_DISTANCE - haltDistance[minDistanceSensor]));
-                // Limit maximum and minimum speed.
-                if (newSpeedLimit < MINIMUM_SPEED) {
-                    newSpeedLimit = MINIMUM_SPEED;
-                } else if (newSpeedLimit > 100) {
-                    newSpeedLimit = 100;
-                }
-                // Ramp and limit affect of random hits
-                if (newSpeedLimit > abdR_speedLimit) {
-                    if (throttleRamp == THROTTLE_STOP) {
-                        abdR_speedLimit = abdR_speedLimit + 1;
-                    }
-                } else if (newSpeedLimit < abdR_speedLimit) {
-                    if (throttleRamp == THROTTLE_STOP) {
-                        abdR_speedLimit = abdR_speedLimit - 1;
-                    }
-                }
-            } else {
-                // Ramp return to full if all obstacles are clear
-                if (abdR_speedLimit < 100) {
-                    if (throttleRamp == THROTTLE_STOP) // Slow ramping down
-                        abdR_speedLimit = abdR_speedLimit + 1;
-                }
-            }
-
-            // Clear forward and backward individually now.
-            if (blockedF == 0) {
-                safeToProceed = 1;
-            }
-            if (blockedR == 0) {
-                safeToRecede = 1;
-            }
-            // If NO sensors are blocked, give the all clear!
-            if (blockedF == 0 && blockedR == 0) {
-                if (Escaping == 1) {// If it WAS escaping before stop it before releasing it
-                    drive_speed(0, 0); // return to stopped before giving control back to main thread
-                }
-                Escaping = 0; // Have fun!
-            } else {
-                if (pleaseEscape == 1 && pluggedIn == 0) {
-                    // If it is plugged in, don't escape!
-                    Escaping = 1; // This will stop main thread from driving the motors.
-                    /* At this point we are blocked, so it is OK to take over control
-                       of the robot (safeToProceed == 0, so the main thread won't do anything),
-                       and it is safe to do work ignoring the need to slow down or stop
-                       because we know our position pretty well.
-                       HOWEVER, you will have to RECHECK distances yourself if you are going to move
-                       in this program location.
-                       */
-                       if (safeToRecede == 1) {
-                           
-                        /* Note: maybe a data structure would work here where the left/right speeds would be stored for each sensor index
-                        
-                           typedef struct { int active; int left; int right;} ESCAPE_SPEED;
-                           ESCAPE_SPEED blockedSensor[] = { ... }
-                           
-                           if (blockedSensor[FRONT_CENTER_SENSOR].active){
-                               drive_speed(blockedSensor[FRONT_CENTER_SENSOR].left, blockedSensor[FRONT_CENTER_SENSOR].right);
-                               or 
-                               index = FRONT_CENTER_SENSOR;
-                           }
-                           ...
-                           or
-                           drive_speed(blockedSensor[index].left, blockedSensor[FRONT_CENTER_SENSOR].right);
-                           
-                        
-                        */
-                           
-                        // The order here determines priority.
-                        #ifdef FRONT_CENTER_SENSOR
-                        if (blockedSensor[FRONT_CENTER_SENSOR] == 1) {
-                            drive_speed(-MINIMUM_SPEED, -MINIMUM_SPEED);
-                        #ifdef FRONT_3D_MOUNTED_SENSOR
-                        } else if (blockedSensor[FRONT_3D_MOUNTED_SENSOR] == 1) {
-                            drive_speed(-MINIMUM_SPEED, -MINIMUM_SPEED);
-                        #endif
-                        #ifdef FRONT_UPPER_DECK_SENSOR
-                        } else if (blockedSensor[FRONT_UPPER_DECK_SENSOR] == 1) {
-                            drive_speed(-MINIMUM_SPEED, -MINIMUM_SPEED);
-                        #endif
-                        #ifdef FRONT_NEAR_LEFT_SENSOR
-                        } else if (blockedSensor[FRONT_NEAR_LEFT_SENSOR] == 1) {
-                            drive_speed(-MINIMUM_SPEED, -(MINIMUM_SPEED * 2)); // Curve out to the right
-                        #endif
-                        #ifdef FRONT_NEAR_RIGHT_SENSOR
-                        } else if (blockedSensor[FRONT_NEAR_RIGHT_SENSOR] == 1) {
-                            drive_speed(-(MINIMUM_SPEED * 2), -MINIMUM_SPEED); // Curve out to the left
-                        #endif
-                        #ifdef FRONT_FAR_LEFT_SENSOR
-                        } else if (blockedSensor[FRONT_FAR_LEFT_SENSOR] == 1) {
-                            drive_speed(0, -MINIMUM_SPEED); // Turn out to the right slowly
-                        #endif
-                        #ifdef FRONT_FAR_RIGHT_SENSOR
-                        } else if (blockedSensor[FRONT_FAR_RIGHT_SENSOR] == 1) {
-                            drive_speed(-MINIMUM_SPEED, 0); // Turn out to the left slowly
-                        #endif
-                        }
-                        #endif
-                    } else if (safeToProceed == 1) { // Escaping for rear sensors, these will move more generically forward.
-                        #ifdef REAR_CENTER_SENSOR
-                        if (blockedSensor[REAR_CENTER_SENSOR] == 1) {
-                            drive_speed(MINIMUM_SPEED, MINIMUM_SPEED);
-                        #ifdef REAR_3D_MOUNTED_SENSOR
-                        } else if (blockedSensor[REAR_3D_MOUNTED_SENSOR] == 1) {
-                            drive_speed(MINIMUM_SPEED, MINIMUM_SPEED);
-                        #endif
-                        #ifdef REAR_UPPER_DECK_SENSOR
-                        } else if (blockedSensor[REAR_UPPER_DECK_SENSOR] == 1) {
-                            drive_speed(MINIMUM_SPEED, MINIMUM_SPEED);
-                        #endif
-                        #ifdef REAR_NEAR_RIGHT_SENSOR
-                        } else if (blockedSensor[REAR_NEAR_RIGHT_SENSOR] == 1) {
-                            drive_speed(MINIMUM_SPEED, MINIMUM_SPEED * 2);
-                        #endif
-                        #ifdef REAR_NEAR_LEFT_SENSOR
-                        } else if (blockedSensor[REAR_NEAR_LEFT_SENSOR] == 1) {
-                            drive_speed(MINIMUM_SPEED * 2, MINIMUM_SPEED);
-                        #endif
-                        #ifdef REAR_FAR_RIGHT_SENSOR
-                        } else if (blockedSensor[REAR_FAR_RIGHT_SENSOR] == 1) {
-                            drive_speed(MINIMUM_SPEED, 0);
-                        #endif
-                        #ifdef REAR_FAR_LEFT_SENSOR
-                        } else if (blockedSensor[REAR_FAR_LEFT_SENSOR] == 1) {
-                            drive_speed(0, MINIMUM_SPEED);
-                        #endif
-                        }
-                        #endif
-                    } else { // We are trapped!!
-                        // Turns out we cannot escape, so turn off "Escaping",
-                        // and now drive control should refuse to move forward or back,
-                        // due to safeToRecede & safeToProceed both == 1,
-                        // but it should be willing to rotate in place,
-                        // which is a normal function of both arlobot_explore
-                        // and the navigation stack's "clearing" function.
-                        Escaping = 0;
-                    }
-                } else { // This is the "halt" but don't "escape" action for that middle ground.
-                    if (Escaping == 1) {// If it WAS Escaping, stop it now.
-                        drive_speed(0, 0); // return to stopped before giving control back to main thread
-                    }
-                    Escaping = 0; // Blocked, but not close enough to Escape yet
-                }
-            }
-
-            throttleRamp = throttleRamp + 1;
-            if(throttleRamp > THROTTLE_STOP)
-                throttleRamp = 0;
-
-        } else {
-            /* All limits and blocks must be cleared if we are going to ignore
-            proximity. Otherwise we get stuck! */
-            Escaping = 0;
-            safeToProceed = 1;
-            safeToRecede = 1;
-            abd_speedLimit = 100;
-            abdR_speedLimit = 100;
+    for (ii = start; ii <= end; ++ii)
+    {
+        if (sensors[ii])
+        {
+            *result |= 1 << ii;
         }
-        pause(1); // Just throttles this cog a little.
     }
 }
 
-
-void SAFETY_Init()
+static void CheckDistance(float* sensors, uint8_t start, uint8_t end, float min_safe_dist, float* sensor_dist, uint32_t* result)
 {
+    uint8_t ii;
+    float min_dist = MAX_DISTANCE;
     
-}
-void SAFETY_Start()
-{
-    // Start safetyOverride cog: (AFTER the Motors are initialized!)
-    cogstart(&safetyOverride, NULL, safetyOverrideStack, sizeof safetyOverrideStack);
+    *result = 0;
     
+    for (ii = start; ii <= end; ++ii)
+    {
+        if (sensors[ii] < min_safe_dist)
+        {
+            *result |= 1 << ii;
+        }
+        // Find the minimum of all the sensors
+        if (sensors[ii] < min_dist)
+        {
+            min_dist = sensors[ii];
+        }
+    }
+    
+    *sensor_dist = min_dist;
 }
 
-#endif
+static void CheckCliffSensors(SENSOR_STATE* sensor_state, SAFETY_STATE* safety_state)
+{
+    uint32_t front_result = 0;
+    uint32_t rear_result = 0;
+    float sensor_dist = 0.0;
+    
+    // Assume the most restrictive state
+    safety_state->cliff_detected = 1;
+    
+    CheckDistance(sensor_state->analog_ir, CLIFF_FRONT_START, CLIFF_FRONT_END, CLIFF_MIN_SAFE_DISTANCE, &sensor_dist, &front_result);
+    CheckDistance(sensor_state->analog_ir, CLIFF_REAR_START, CLIFF_REAR_END, CLIFF_MIN_SAFE_DISTANCE, &sensor_dist, &rear_result);
+
+    if (!front_result && !rear_result)
+    {
+        safety_state->cliff_detected = 0;
+    }
+}
+
+static void CheckFloorSensors(SENSOR_STATE* sensor_state, SAFETY_STATE* safety_state)
+{
+    uint32_t front_result;
+    uint32_t rear_result;
+    
+    // Assume the most restrictive state
+    safety_state->floor_obstacle_detected = 1;
+    
+    CheckDetect(sensor_state->digital_ir, FLOOR_OBSTACLE_FRONT_START, FLOOR_OBSTACLE_FRONT_END, &front_result);
+    CheckDetect(sensor_state->digital_ir, FLOOR_OBSTACLE_REAR_START, FLOOR_OBSTACLE_REAR_END, &rear_result);
+    
+    if (!front_result && !rear_result)
+    {
+        safety_state->floor_obstacle_detected = 0;
+    }
+}
+
+static void CheckDistanceSensors(SENSOR_STATE* sensor_state, SAFETY_STATE* safety_state)
+{
+    uint32_t front_us_result;
+    uint32_t front_ir_result;
+    uint32_t rear_us_result;
+    uint32_t rear_ir_result;
+    float us_sensor_dist = 0.0;
+    float ir_sensor_dist = 0.0;
+    
+    // Assume the most restrictive state
+    safety_state->safe_to_proceed = 0;
+    safety_state->safe_to_recede = 0;
+    safety_state->min_distance_sensor = MAX_DISTANCE;
+    
+    CheckDistance(sensor_state->ultrasonic, ULTRASONIC_FRONT_LOWER_START, ULTRASONIC_FRONT_LOWER_END, ULTRASONIC_MIN_SAFE_DISTANCE, &us_sensor_dist, &front_us_result);
+    if (us_sensor_dist < safety_state->min_distance_sensor)
+    {
+        safety_state->min_distance_sensor = us_sensor_dist;
+    }
+    CheckDistance(sensor_state->analog_ir, ANALOG_IR_FRONT_START, ANALOG_IR_FRONT_END, ANALOG_IR_MIN_SAFE_DISTANCE, &ir_sensor_dist, &front_ir_result);
+    if (ir_sensor_dist < safety_state->min_distance_sensor)
+    {
+        safety_state->min_distance_sensor = ir_sensor_dist;
+    }
+    CheckDistance(sensor_state->ultrasonic, ULTRASONIC_REAR_LOWER_START, ULTRASONIC_REAR_LOWER_END, ULTRASONIC_MIN_SAFE_DISTANCE, &us_sensor_dist, &rear_us_result);
+    if (us_sensor_dist < safety_state->min_distance_sensor)
+    {
+        safety_state->min_distance_sensor = us_sensor_dist;
+    }
+    CheckDistance(sensor_state->analog_ir, ANALOG_IR_REAR_START, ANALOG_IR_REAR_END, ANALOG_IR_MIN_SAFE_DISTANCE, &ir_sensor_dist, &rear_ir_result);
+    if (ir_sensor_dist < safety_state->min_distance_sensor)
+    {
+        safety_state->min_distance_sensor = ir_sensor_dist;
+    }
+
+    if (!front_us_result && !front_ir_result)
+    {
+        safety_state->safe_to_proceed = 1;
+    }
+    
+    if (!rear_us_result && !rear_ir_result)
+    {
+        safety_state->safe_to_recede = 1;
+    }
+}
+
+void UpdateSafety(SENSOR_STATE* sensor_state, SAFETY_STATE* safety_state)
+{
+    // The purpose of safety is to evaluate various sensors for "dangerous" environments
+    // and to the safety state appropriately.  Safety does not take any action other than
+    // setting the safety state.
+    
+    if (safety_state->ignore_proximity || 
+        (safety_state->ignore_dist_sensors && safety_state->ignore_cliff_sensors && safety_state->ignore_floor_sensors)
+        )
+    {
+        safety_state->safe_to_proceed = 1;
+        safety_state->safe_to_recede = 1;
+        safety_state->cliff_detected = 0;
+        safety_state->floor_obstacle_detected = 0;
+    }
+    else
+    {
+        if (!safety_state->ignore_dist_sensors)
+        {
+            CheckDistanceSensors(sensor_state, safety_state);
+        }
+        
+        if (!safety_state->ignore_cliff_sensors)
+        {
+            CheckCliffSensors(sensor_state, safety_state);
+        }
+        
+        if (!safety_state->ignore_floor_sensors)
+        {
+            CheckFloorSensors(sensor_state, safety_state);
+        }
+        
+        if (safety_state->cliff_detected || safety_state->floor_obstacle_detected)
+        {
+            safety_state->safe_to_proceed = 0;
+            safety_state->safe_to_recede = 0;
+        }
+        
+        // Future Checks
+        // When the motor voltage/current sensors are running, we might want to perform some 
+        // safety checking on the voltage and current.
+    }
+}

@@ -1,22 +1,18 @@
-/**************************************************************************************************
- The purpose of this module is to calculate and report odometry readings
-**************************************************************************************************/
 #ifndef ODOM_H
 #define ODOM_H
 
-/**************************************************************************************************
-  Functions
-**************************************************************************************************/
-/* Initializes the module */
-void ODOM_Init();
 
-/* Configures the module */
-void ODOM_Config();
+typedef struct _Odometry_State
+{
+    float x_dist;
+    float y_dist;
+    float heading;
+    float gyro_heading;
+    float linear_speed;
+    float angular_speed;
+} ODOM_STATE;
 
-/* Starts the module main thread */
-void ODOM_Start();
+void OdomStart();
+void GetOdomState(ODOM_STATE* state);
 
 #endif
-/*************************************************************************************************
-EOF
-*/

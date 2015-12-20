@@ -1,4 +1,5 @@
 #include "convert.h"
+#include "const.h"
 
 float CmToInch(float cm)
 {

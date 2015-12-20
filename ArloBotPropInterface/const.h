@@ -10,4 +10,9 @@
 #define SPEED_OF_SOUND_CM_PER_SEC (17150.0)
 #define CM_PER_INCH (2.54)
 
+//Microseconds to centimeter conversion: uS / 58 = centimeter
+#define CM_CONVERSION (58)
+//Microseconds to inch conversion: uS / 148 = inch
+#define IN_CONVERSION (148)
+
 #endif

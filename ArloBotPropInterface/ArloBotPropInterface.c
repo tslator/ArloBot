@@ -1,46 +1,92 @@
-/**************************************************************************************************
- This is the main module for the Propeller firmware
-**************************************************************************************************/
-
-
-/**************************************************************************************************
- Includes
-**************************************************************************************************/
-#include "simpletools.h"
-#include "fdserial.h"
-/*
-http://forums.parallax.com/showthread.php/154274-The-quot-Artist-quot-robot?p=1277133&viewfull=1#post1277133
-"The most impressive is that we can use the same code as the ActivityBot examples, replacing only the library’s name. So everyone who has a big-size Robot, similar to The Artist (like Arlo, Eddie or any other) must only change the library “abdrive.h” with the “arlodrive.h”. So we can take all the advantages form the pre-written code for the ActivityBot!'
-http://www.parallax.com/news/2013-12-23/run-activitybot-c-code-arlo
-http://forums.parallax.com/showthread.php/152636-Run-ActivityBot-C-Code-in-the-Arlo!?p=1230592&posted=1#post1230592
-*/
+#include <simpletools.h>
+#include <fdserial.h>
 #include "arlodrive.h"
+#include "i2cbus.h"
+#include "utils.h"
 #include "message.h"
+#include "sensors.h"
 #include "odom.h"
-#include "motiondetect.h"
-#include "infrared.h"
-#include "ultrasonic.h"
+#include "safety.h"
 
 
-/**************************************************************************************************
- Macros
-**************************************************************************************************/
+
 #define DEFAULT_MAX_SPEED (100)
 #define DEFAULT_TRACK_WIDTH (0.403000)
 #define DEFAULT_DIST_PER_COUNT (0.006760)
-#define MAX_NO_SERIAL_COMMS_TIME (1000)  // 1 second
-#define INIT_LOOP_WAIT_TIME (1000)       // 1 second
+#define MAX_NO_SERIAL_COMMS_TIME (1000)
+#define INIT_LOOP_WAIT_TIME (1000)
 
-#define OP_STATE_STATUS 0
-#define OP_STATE_STATUS_TIME (1000)
-#define IR_SENSOR_STATUS 1
-#define IR_SENSOR_STATUS_TIME (1000)
-#define US_SENSOR_STATUS 2
-#define US_SENSOR_STATUS_TIME (1000)
+#define OP_STATE_STATUS_TIME (250)
+#define ODOM_STATE_STATUS_TIME (100)
+#define AIR_SENSOR_STATUS_TIME (1000)
+#define DIR_SENSOR_STATUS_TIME (1000)
+#define US_SENSOR_STATUS_TIME (100)
 
-/**************************************************************************************************
- Types
-**************************************************************************************************/
+
+#define TURN_ON_MOTORS() set_output(MOTORS_RELAY, MOTORS_ON)
+
+//-------------------------------------------------------------------------------------------------
+//  Messaging
+//-------------------------------------------------------------------------------------------------
+const char COMMA[2] = ",";
+
+// Message Classes
+#define ACTION_MSG_CLASS ('a')
+#define STATUS_MSG_CLASS ('s')
+#define CONFIG_MSG_CLASS ('c')
+
+// Message Types
+#define ACTION_MSG_TYPE_MOVE ('m')
+#define STATUS_MSG_TYPE_ODOM ('o')
+#define STATUS_MSG_TYPE_OP_STATE ('p')
+#define STATUS_MSG_TYPE_AIR_SENSOR ('i') // Analog IR Sensor
+#define STATUS_MSG_TYPE_DIR_SENSOR ('g') // Digital IR Sensor
+#define STATUS_MSG_TYPE_US_SENSOR ('u')
+#define CONFIG_MSG_TYPE_DRIVE_GEOMETRY ('d')
+#define CONFIG_MSG_TYPE_OP_STATE ('p')
+
+#define USVALFMT "%.1f"
+#define US_SENSOR_FORMAT "%c:%c:"USVALFMT","USVALFMT","USVALFMT","USVALFMT","USVALFMT","USVALFMT","USVALFMT","USVALFMT","USVALFMT","USVALFMT","USVALFMT","USVALFMT","USVALFMT","USVALFMT","USVALFMT","USVALFMT"\n"
+
+#define DIR_SENSOR_FORMAT   "%c:%c:%d,%d,%d,%d,%d,%d\n"
+
+#define OPSVALFMT "%.1f"
+#define OP_STATE_FORMAT "%c:%c:%d,%d,%d,%d,%d,%d,%d,%d,"OPSVALFMT","OPSVALFMT","OPSVALFMT","OPSVALFMT","OPSVALFMT",%d,%d\n"
+
+#define AIRVALFMT "%.1f"
+#define AIR_SENSOR_FORMAT "%c:%c:"AIRVALFMT","AIRVALFMT","AIRVALFMT","AIRVALFMT","AIRVALFMT","AIRVALFMT","AIRVALFMT","AIRVALFMT","AIRVALFMT","AIRVALFMT","AIRVALFMT","AIRVALFMT","AIRVALFMT","AIRVALFMT","AIRVALFMT","AIRVALFMT"\n"
+
+#define ODOMVALFORMAT "%.1f"
+#define ODOM_FORMAT "%c:%c:"ODOMVALFORMAT","ODOMVALFORMAT","ODOMVALFORMAT","ODOMVALFORMAT","ODOMVALFORMAT","ODOMVALFORMAT"\n"
+
+static char out_buffer[MAX_BUFFER_DATA];
+static char in_buffer[MAX_BUFFER_DATA];
+
+//-------------------------------------------------------------------------------------------------
+//  Odometry
+//-------------------------------------------------------------------------------------------------
+static ODOM_STATE OdomState;
+
+static uint8_t odom_enabled;
+#define ENABLE_ODOM()     (odom_enabled = 1)
+#define IS_ODOM_ENABLED() (odom_enabled == 1)
+
+//-------------------------------------------------------------------------------------------------
+//  Sensors
+//-------------------------------------------------------------------------------------------------
+static IMU_STATE ImuState;
+static SENSOR_STATE SensorState;
+static SAFETY_STATE SafetyState;
+
+static uint8_t sensors_enabled;
+#define ENABLE_SENSORS()  (sensors_enabled = 1)
+#define IS_SENSORS_ENABLED() (sensors_enabled == 1)
+
+
+
+//-------------------------------------------------------------------------------------------------
+//  Application
+//-------------------------------------------------------------------------------------------------
 typedef struct _Operational_State
 {
     // These variables track startup and running states
@@ -57,155 +103,166 @@ typedef struct _Operational_State
     uint8_t last_y;
     uint8_t last_heading;
     
-    // These variables convey op state to ROS
-    uint8_t safe_to_proceed;
-    uint8_t safe_to_recede;
-    uint8_t escaping;
-    uint8_t min_distance_sensor;
-    uint8_t left_motor_power;
-    uint8_t right_motor_power;
-    uint8_t cliff_detected;
-    uint8_t floor_obstacle_detected;
-    uint8_t ignore_proximity;
-    uint8_t ignore_cliff_sensors;
-    uint8_t ignore_ir_sensors;
-    uint8_t ignore_floor_sensors;
-    uint8_t ac_power;
+    // I'm still not sure what information this is trying to convey, that there is ac power?
+    // Is it a statement or question?
+    uint8_t ac_power;    
 } OP_STATE;
 
-/* Consider what type of data structure could be used to hold IR/US sensor groupings */
-
-/**************************************************************************************************
- Variables
-**************************************************************************************************/
 // Shared variables - These variables are shared with the Odometry cog
-float volatile DistancePerCount;
-float volatile TrackWidth;
+float volatile dist_per_count = DEFAULT_TRACK_WIDTH;
+float volatile track_width = DEFAULT_DIST_PER_COUNT;
 
-static float CommandedVelocity;
-static float CommandedAngularVelocity;
+static float commanded_linear_velocity;
+static float commanded_angular_velocity;
+static float left_speed;
+static float right_speed;
 static OP_STATE OpState;
 
-
-/**************************************************************************************************
- Functions
-**************************************************************************************************/
-/**************************************************************************************************
- Returns the number of millis since the propeller started up
- Note: This function needs to be moved to a separate module like utilities or time etc.
- Note: Also, I don't think function handles rollover of CNT, but I think that is more than 24 hours
- and it is unlikely that the robot will be running for 24 hours straight
-**************************************************************************************************/
-uint32_t millis()
+//-------------------------------------------------------------------------------------------------
+//  Messaging
+//-------------------------------------------------------------------------------------------------
+static void SendStatusMessage(char type)
 {
-  return (CNT / (CLKFREQ / 1000));
-}
-
-/**************************************************************************************************
- Wrapper for pause primitive
- Note: This function needs to be moved to a separate module like utilities or time etc.
-**************************************************************************************************/
-static void Wait(uint32_t timeout)
-{
-    pause(timeout);
-}
-
-/**************************************************************************************************
-  Invokes the parsing routine on incoming ACTION messages
-**************************************************************************************************/
-void ParseActionMessages()
-{
-    ACTION_MSG a_msg;
+    uint8_t send_message = 0;
     
-    MSG_ParseActionMessage(&a_msg);
-    switch (a_msg.type)
+    switch (type)
     {
-        case ACTION_MSG_TYPE_MOVE:
-        {
-            CommandedVelocity = a_msg.data.move.linear_velocity;
-            CommandedAngularVelocity = a_msg.data.move.angular_velocity;
-            
-            // Note: Move commands come via serial communications.  It is necessary to track how long
-            //       between serial commands in order to keep the robot from running unchecked
-            //       Every time a serial command is received, the timeout is reset
-            OpState.serial_timeout = millis();
-            
+        case STATUS_MSG_TYPE_ODOM:
+            sprint(out_buffer, ODOM_FORMAT,
+                   STATUS_MSG_CLASS,
+                   STATUS_MSG_TYPE_ODOM,
+                   OdomState.x_dist, 
+                   OdomState.y_dist, 
+                   OdomState.heading,
+                   #if 0
+                   ImuState.heading,
+                   #else
+                   0.0,
+                   #endif
+                   OdomState.linear_speed, 
+                   OdomState.angular_speed);
+                   
+            send_message = 1;
             break;
-        }
+           
+        case STATUS_MSG_TYPE_AIR_SENSOR:
+            // Send sensor information
+            // It maybe useful to send both raw sensor data, e.g. all the ultrasonic sensors, all the ir sensors, etc
+            // and also send the grouping of sensors, e.g. FrontCollisionDetect (which might be a combination of ultrasonic and ir sesnors), 
+            // RearCollisionDetect, etc.
+            sprint(out_buffer, AIR_SENSOR_FORMAT,
+                   STATUS_MSG_CLASS,
+                   STATUS_MSG_TYPE_AIR_SENSOR,
+                   SensorState.analog_ir[0],
+                   SensorState.analog_ir[1],
+                   SensorState.analog_ir[2],
+                   SensorState.analog_ir[3],
+                   SensorState.analog_ir[4],
+                   SensorState.analog_ir[5],
+                   SensorState.analog_ir[6],
+                   SensorState.analog_ir[7],
+                   SensorState.analog_ir[8],
+                   SensorState.analog_ir[9],
+                   SensorState.analog_ir[10],
+                   SensorState.analog_ir[11],
+                   SensorState.analog_ir[12],
+                   SensorState.analog_ir[13],
+                   SensorState.analog_ir[14],
+                   SensorState.analog_ir[15]);
+            send_message = 1;
+            break;
+            
+        case STATUS_MSG_TYPE_DIR_SENSOR:
+            // Send sensor information
+            // It maybe useful to send both raw sensor data, e.g. all the ultrasonic sensors, all the ir sensors, etc
+            // and also send the grouping of sensors, e.g. FrontCollisionDetect (which might be a combination of ultrasonic and ir sesnors), 
+            // RearCollisionDetect, etc.
+            sprint(out_buffer, DIR_SENSOR_FORMAT,
+                   STATUS_MSG_CLASS,
+                   STATUS_MSG_TYPE_DIR_SENSOR,
+                   SensorState.digital_ir[0],
+                   SensorState.digital_ir[1],
+                   SensorState.digital_ir[2],
+                   SensorState.digital_ir[3],
+                   SensorState.digital_ir[4],
+                   SensorState.digital_ir[5]);
+            send_message = 1;
+            break;
+            
+        case STATUS_MSG_TYPE_US_SENSOR:
+            // Send sensor information
+            // It maybe useful to send both raw sensor data, e.g. all the ultrasonic sensors, all the ir sensors, etc
+            // and also send the grouping of sensors, e.g. FrontCollisionDetect (which might be a combination of ultrasonic and ir sesnors), 
+            // RearCollisionDetect, etc.
+            sprint(out_buffer, US_SENSOR_FORMAT,
+                   STATUS_MSG_CLASS,
+                   STATUS_MSG_TYPE_US_SENSOR,
+                   SensorState.ultrasonic[0],
+                   SensorState.ultrasonic[1],
+                   SensorState.ultrasonic[2],
+                   SensorState.ultrasonic[3],
+                   SensorState.ultrasonic[4],
+                   SensorState.ultrasonic[5],
+                   SensorState.ultrasonic[6],
+                   SensorState.ultrasonic[7],
+                   SensorState.ultrasonic[8],
+                   SensorState.ultrasonic[9],
+                   SensorState.ultrasonic[10],
+                   SensorState.ultrasonic[11],
+                   SensorState.ultrasonic[12],
+                   SensorState.ultrasonic[13],
+                   SensorState.ultrasonic[14],
+                   SensorState.ultrasonic[15]
+                   );
+            send_message = 1;
+            break;
+          
+        case  STATUS_MSG_TYPE_OP_STATE:
+            // Consider using a bitmap for the binary detectors
+            sprint(out_buffer, OP_STATE_FORMAT,
+                   STATUS_MSG_CLASS,
+                   CONFIG_MSG_TYPE_OP_STATE,
+                   OpState.drive_geometry_received,
+                   OpState.op_state_received,
+                   SensorState.motion_detected,
+                   SafetyState.safe_to_proceed,
+                   SafetyState.safe_to_recede,
+                   SafetyState.escaping,
+                   OpState.max_forward_speed,
+                   OpState.max_reverse_speed,
+                   SafetyState.min_distance_sensor,
+                   SensorState.left_motor_voltage,
+                   SensorState.right_motor_voltage,
+                   SensorState.left_motor_current,
+                   SensorState.right_motor_current,
+                   SafetyState.cliff_detected,
+                   SafetyState.floor_obstacle_detected);
+            send_message = 1;
+            break;
         
         default:
             // Unknown message type
-            //assert();
             break;
+    }
+    
+    if (send_message)
+    {
+        SendMessage(out_buffer);
+        //print(out_buffer);
     }
 }
 
-/**************************************************************************************************
-  Invokes the parsing routine on incoming CONFIG messages
-**************************************************************************************************/
-static void ParseConfigMessages()
+static uint8_t TimeForStatusMessage(char type)
 {
-    CONFIG_MSG c_msg;
+    static uint32_t op_state_last_time   = 0;
+    static uint32_t odom_state_last_time = 0;
+    static uint32_t air_sensor_last_time = 0;
+    static uint32_t dir_sensor_last_time = 0;
+    static uint32_t us_sensor_last_time  = 0;
     
-    MSG_ParseConfigMessage(&c_msg);
-    switch (c_msg.type)
+    switch (type)
     {
-        case CONFIG_MSG_TYPE_DRIVE_GEOMETRY:
-        {
-            // What other validation is neccessary on these values?
-            // One thing that has occurred, when the values for track width and distance per count are 0.0
-            // the resulting odometry calculations end up being reported as NANs.
-            // At the very least, these values need to be greater than 0.0 (to within a certain tolerance)
-            // These values do have a default and maybe the default should remain in effect unless the 
-            // overrides are "legitimate".  Food for thought.
-            if (c_msg.data.drive_geo.track_width > 0.0)
-            {
-                TrackWidth = c_msg.data.drive_geo.track_width;
-            }
-            if (c_msg.data.drive_geo.dist_per_count > 0.0)
-            {
-                DistancePerCount = c_msg.data.drive_geo.dist_per_count;
-            }
-            OpState.drive_geometry_received = 1;
-            break;
-        }
-        
-        case CONFIG_MSG_TYPE_OP_STATE:
-        {
-            // Note: Consider combining the binary parameters into a bitmap
-            
-            OpState.ignore_proximity = c_msg.data.op_state.ignore_proximity;
-            OpState.ignore_cliff_sensors = c_msg.data.op_state.ignore_cliff_sensors;
-            OpState.ignore_ir_sensors = c_msg.data.op_state.ignore_ir_sensors;
-            OpState.ignore_floor_sensors = c_msg.data.op_state.ignore_floor_sensors;
-            OpState.ac_power = c_msg.data.op_state.ac_power;
-            OpState.last_x = c_msg.data.op_state.last_x;
-            OpState.last_y = c_msg.data.op_state.last_y;
-            OpState.last_heading = c_msg.data.op_state.last_heading;
-            OpState.op_state_received = 1;
-            break;
-        }
-        
-        default:
-            // Unknown message type
-            //assert()
-            break;
-    }
-}
-
-/**************************************************************************************************
-  Tracks time for each type of STATUS message and return True when the message should be and False
-  otherwise
-**************************************************************************************************/
-static uint8_t TimeForStatusMessage(uint8_t status_type)
-{
-    static uint32_t op_state_last_time = 0;
-    static uint32_t ir_sensor_last_time = 0;
-    static uint32_t us_sensor_last_time = 0;
-    
-    switch (status_type)
-    {
-        case OP_STATE_STATUS:
+        case STATUS_MSG_TYPE_OP_STATE:
             if ((millis() - op_state_last_time) > OP_STATE_STATUS_TIME)
             {
                 op_state_last_time = millis();
@@ -213,19 +270,35 @@ static uint8_t TimeForStatusMessage(uint8_t status_type)
             }                
             break;
             
-        case IR_SENSOR_STATUS:
-            if ((millis() - ir_sensor_last_time) > IR_SENSOR_STATUS_TIME)
+        case STATUS_MSG_TYPE_ODOM:
+            if ((millis() - odom_state_last_time) > ODOM_STATE_STATUS_TIME)
             {
-                ir_sensor_last_time = millis();
-                return 1;
+                odom_state_last_time = millis();
+                return IS_ODOM_ENABLED();
+            }
+            break;
+            
+        case STATUS_MSG_TYPE_AIR_SENSOR:
+            if ((millis() - air_sensor_last_time) > AIR_SENSOR_STATUS_TIME)
+            {
+                air_sensor_last_time = millis();
+                return IS_SENSORS_ENABLED();
             }                
             break;
             
-        case US_SENSOR_STATUS:
+        case STATUS_MSG_TYPE_DIR_SENSOR:
+            if ((millis() - dir_sensor_last_time) > DIR_SENSOR_STATUS_TIME)
+            {
+                dir_sensor_last_time = millis();
+                return IS_SENSORS_ENABLED();
+            }                
+            break;
+            
+        case STATUS_MSG_TYPE_US_SENSOR:
             if ((millis() - us_sensor_last_time) > US_SENSOR_STATUS_TIME)
             {
                 us_sensor_last_time = millis();
-                return 1;
+                return IS_SENSORS_ENABLED();
             }                
             break;
             
@@ -236,243 +309,152 @@ static uint8_t TimeForStatusMessage(uint8_t status_type)
     return 0;
 }
 
-/**************************************************************************************************
-  Processes incoming messages when they are available
-**************************************************************************************************/
-static void ProcessIncomingMessages()
-{
-    if (MSG_Available())
-    {
-        ParseActionMessages();
-        ParseConfigMessages();
-    }
-}
 
-/**************************************************************************************************
-  Sends STATUS messages at the appropriately scheduled time
-**************************************************************************************************/
 static void SendStatusMessages()
 {
-    STATUS_MSG msg;
-    
-    if (TimeForStatusMessage(OP_STATE_STATUS))
+    if (TimeForStatusMessage(STATUS_MSG_TYPE_OP_STATE))
     {
-        memset(&msg, 0, sizeof(msg));
-        
-        msg.type = STATUS_MSG_TYPE_OP_STATE;
-        msg.data.op_state.drive_geometry_received = OpState.drive_geometry_received;
-        msg.data.op_state.op_state_received       = OpState.op_state_received;
-        msg.data.op_state.motion_detected         = OpState.motion_detected;
-        msg.data.op_state.safe_to_proceed         = OpState.safe_to_proceed;
-        msg.data.op_state.safe_to_recede          = OpState.safe_to_recede;
-        msg.data.op_state.escaping                = OpState.escaping;
-        msg.data.op_state.max_forward_speed       = OpState.max_forward_speed;
-        msg.data.op_state.max_reverse_speed       = OpState.max_reverse_speed;
-        msg.data.op_state.min_distance_sensor     = OpState.min_distance_sensor;
-        msg.data.op_state.left_motor_power        = OpState.left_motor_power;
-        msg.data.op_state.right_motor_power       = OpState.right_motor_power;
-        msg.data.op_state.cliff_detected          = OpState.cliff_detected;
-        msg.data.op_state.floor_obstacle_detected = OpState.floor_obstacle_detected;
-        MSG_SendStatusMessage(&msg);
+        SendStatusMessage(STATUS_MSG_TYPE_OP_STATE);
     }
     
-#ifdef IR_SENSORS_SUPPORT
-    if (TimeForStatusMessage(IR_SENSOR_STATUS))
+    if (TimeForStatusMessage(STATUS_MSG_TYPE_ODOM))
     {
-        float distances[MAX_NUM_IR_SENSORS];
-        uint8_t num_used;
-        uint8_t ii;
+        SendStatusMessage(STATUS_MSG_TYPE_ODOM);
+    }
+    
+    if (TimeForStatusMessage(STATUS_MSG_TYPE_AIR_SENSOR))
+    {
+        SendStatusMessage(STATUS_MSG_TYPE_AIR_SENSOR);
+    }    
+    
+    if (TimeForStatusMessage(STATUS_MSG_TYPE_US_SENSOR))
+    {
+        SendStatusMessage(STATUS_MSG_TYPE_US_SENSOR);
+    }
+    
+    if (TimeForStatusMessage(STATUS_MSG_TYPE_DIR_SENSOR))
+    {
+        SendStatusMessage(STATUS_MSG_TYPE_DIR_SENSOR);
+    }
+}
+
+static void ParseMoveMessage(char *buffer)
+{
+    char *unconverted;
+    char *value_token;
+    
+    /* parse up the data into the values array */
+    value_token = strtok(buffer, COMMA);
+    commanded_linear_velocity = strtod(value_token, &unconverted);
+    value_token = strtok(NULL, COMMA);
+    commanded_angular_velocity = strtod(value_token, &unconverted);
+}
+
+static void ParseDriveGeometry(char *buffer)
+{
+    char *unconverted;
+    char *value_token;
+    float new_track_width;
+    float new_dist_per_count;
+    
+    /* parse up the data into the values array */
+    /* c:o:%f,%f */
+    value_token = strtok(buffer, COMMA);
+    new_track_width = strtod(value_token, &unconverted);
+    value_token = strtok(NULL, COMMA);
+    new_dist_per_count = strtod(value_token, &unconverted);
+
+    if (new_track_width > 0.0)
+    {
+        track_width = new_track_width;
+    }
+    if (new_dist_per_count > 0.0)
+    {
+        dist_per_count = new_dist_per_count;
+    }
+
+    OpState.drive_geometry_received = 1;
+}
+
+static void ParseOpState(char *buffer)
+{
+    char *unconverted;
+    char *value_token;
+    
+    /* parse up the data into the values array */
+    /* c:p:%d,%d,%d,%d,%d,%f,%f,%f */
+    value_token = strtok(buffer, COMMA);
+    SafetyState.ignore_proximity = (uint8_t)strtol(value_token, &unconverted, 10);
+    value_token = strtok(NULL, COMMA);
+    SafetyState.ignore_cliff_sensors = (uint8_t)strtol(value_token, &unconverted, 10);
+    value_token = strtok(NULL, COMMA);
+    SafetyState.ignore_dist_sensors = (uint8_t)strtol(value_token, &unconverted, 10);
+    value_token = strtok(NULL, COMMA);
+    SafetyState.ignore_floor_sensors = (uint8_t)strtol(value_token, &unconverted, 10);
+    value_token = strtok(NULL, COMMA);
+    OpState.ac_power = (uint8_t)strtol(value_token, &unconverted, 10);
+    value_token = strtok(NULL, COMMA);
+    OpState.last_x = strtod(value_token, &unconverted);
+    value_token = strtok(NULL, COMMA);
+    OpState.last_y = strtod(value_token, &unconverted);
+    value_token = strtok(NULL, COMMA);
+    OpState.last_heading = strtod(value_token, &unconverted);
+    
+    OpState.op_state_received = 1;
+}    
+
+static void ProcessIncomingMessages()
+{
+    if (AcquireMessage(in_buffer))
+    {
+        char msg_class = in_buffer[0];
+        char msg_type = in_buffer[2];
         
-        memset(&distances, 0, sizeof(distances));
-        memset(&msg, 0, sizeof(msg));
-        
-        msg.type = STATUS_MSG_TYPE_IR_SENSOR;
-        IR_Distance(distances, &num_used);
-        for (ii = 0; ii < num_used; ++ii)
+        switch (msg_class)
         {
-            msg.data.ir.sensors[ii] = distances[ii];
+            case ACTION_MSG_CLASS:
+            {
+                switch (msg_type)
+                {
+                    case ACTION_MSG_TYPE_MOVE:
+                        ParseMoveMessage(&in_buffer[4]);
+                        
+                        // Note: Move commands come via serial communications.  It is necessary to track how long
+                        //       between serial commands in order to keep the robot from running unchecked
+                        //       Every time a serial command is received, the timeout is reset
+                        OpState.serial_timeout = millis();
+                        break;
+                }
+            }
+            break;
+            
+            case CONFIG_MSG_CLASS:
+            {
+                switch (msg_type)
+                {
+                    case CONFIG_MSG_TYPE_DRIVE_GEOMETRY:
+                        ParseDriveGeometry(&in_buffer[4]);
+                        break;
+                        
+                    case CONFIG_MSG_TYPE_OP_STATE:
+                        ParseOpState(&in_buffer[4]);
+                        break;
+                }                    
+            }
+            break;                               
         }
     }
-#endif
-
-#ifdef US_SENSORS_SUPPORT
-    if (TimeForStatusMessage(US_SENSOR_STATUS))
-    {
-        float distances[MAX_NUM_US_SENSORS];
-        uint8_t num_used;
-        uint8_t ii;
-        
-        memset(&distances, 0, sizeof(distances));
-        memset(&msg, 0, sizeof(msg));
-        
-        msg.type = STATUS_MSG_TYPE_US_SENSOR;
-        US_Distance(distances, &num_used);
-        for (ii = 0; ii < num_used; ++ii)
-        {
-            msg.data.us.sensors[ii] = distances[ii];
-        }
-    }
-#endif
 }
 
-/**************************************************************************************************
-  Checks various environment information, sensors, states, etc to determine if continued operation
-  is possible
-**************************************************************************************************/
-static void CheckEnvironment()
-{
-    
-    OpState.safe_to_proceed = 1;
-    OpState.safe_to_recede = 1;
-        
-    // Don't let the robot move unchecked.  At the minimum the robot can only move for MAX_NO_SERIAL_COMMS_TIME seconds
-    // If the robot is moving (non-zero speed on left or right wheels) and there has not been serial communication for 
-    // MAX_NO_SERIAL_COMMS_TIME then zero out the velocities
-    if ( OpState.moving && 
-         ((millis() - OpState.serial_timeout) > MAX_NO_SERIAL_COMMS_TIME) )
-    {
-        CommandedVelocity = 0.0;
-        CommandedAngularVelocity = 0.0;
-    }
-    
-    // Ultimately we will monitor the motor voltages and report them, for now, just fake it so ROS is happy
-    OpState.left_motor_power = 4.69;
-    OpState.right_motor_power = 4.69;
-    
-}
 
-/**************************************************************************************************
-  Calculate the speeds for the left and right wheels based on the given linear and angular velocities
-  Ref: 
-**************************************************************************************************/
-static void CalculateLeftRightSpeed(float* left, float* right)
-// Prevent saturation at max wheel speed when a compound command is sent.
-/* Without this, if your max speed is 50, and ROS asks us to set one wheel
-   at 50 and the other at 100, we will end up with both at 50
-   changing a turn into a straight line!
-   This is because arlodrive.c just cuts off each wheel at the set max speed
-   with no regard for the expected left to right wheel speed ratio.
-   Here is the code from arlodrive.c:
-   int abd_speedLimit = 100;
-   static int encoderFeedback = 1;
-
-   void drive_setMaxSpeed(int maxTicksPerSec) {
-   abd_speedLimit = maxTicksPerSec;
-   }
-   ...
-   void set_drive_speed(int left, int right) {
-   if(encoderFeedback) {
-   if(left > abd_speedLimit) left = abd_speedLimit;
-   if(left < -abd_speedLimit) left = -abd_speedLimit;
-   if(right > abd_speedLimit) right = abd_speedLimit;
-   if(right < -abd_speedLimit) right = -abd_speedLimit;
-   }}
-   ...
-
-   So clearly we need to "normalize" the speed so that if one number is truncated,
-   the other is brought down the same amount, in order to accomplish the same turn
-   ratio at a slower speed!
-   Especially if the max speed is variable based on parameters within this code,
-   such as proximity to walls, etc.
-   */
-{
-    float angular_velocity_offset;
-    
-    angular_velocity_offset = CommandedAngularVelocity * (TrackWidth * 0.5);
-    
-    if (CommandedVelocity > 0) 
-    {
-        // Use max forward speed for rotate in place.
-        if ( (OpState.max_forward_speed * DistancePerCount) - fabs(angular_velocity_offset) < CommandedVelocity)
-        {
-            CommandedVelocity = (OpState.max_forward_speed * DistancePerCount) - fabs(angular_velocity_offset);
-        }        
-    } 
-    else if (CommandedVelocity < 0)
-    { 
-        // Use max reverse speed for reverse movement.
-
-        // In theory ROS never requests a negative angular velocity, only teleop
-        if ( -((OpState.max_reverse_speed * DistancePerCount) - fabs(angular_velocity_offset)) > CommandedVelocity)
-        {
-            CommandedVelocity = -((OpState.max_reverse_speed * DistancePerCount) - fabs(angular_velocity_offset));
-        }            
-    }
-    
-    *left = (CommandedVelocity - angular_velocity_offset)/DistancePerCount;
-    *right = (CommandedVelocity + angular_velocity_offset)/DistancePerCount;
-    
-}
-
-/**************************************************************************************************
-  Applies the left and right wheel speeds to the motors.  The wrapper allows for any additional
-  safety checks or overrides.  Also, provides calculation for the 'moving' state variable.  
-**************************************************************************************************/
-static void ApplyLeftRightSpeed(float left_speed, float right_speed)
-{
-    // Use the left/right speed to determine if the robot is moving
-    OpState.moving = 0;
-    if (left_speed > 0 || right_speed > 0 || left_speed < 0 || right_speed < 0)
-    {
-        OpState.moving = 1;
-    }
-          
-    drive_speed(left_speed, right_speed);
-}
-
-/**************************************************************************************************
-  Initializes internal module variables and also initializes external modules via their Init entry
-  points.
-**************************************************************************************************/
-static void Init()
-{
-    TrackWidth = DEFAULT_TRACK_WIDTH;
-    DistancePerCount = DEFAULT_DIST_PER_COUNT;
-    
-    CommandedVelocity = 0.0;
-    CommandedAngularVelocity = 0.0;
-    
-    memset(&OpState, 0, sizeof(OpState));
-    OpState.max_forward_speed = DEFAULT_MAX_SPEED;
-    OpState.max_reverse_speed = DEFAULT_MAX_SPEED;
-    
-    
-    MSG_Init();
-    ODOM_Init();
-}
-
-/**************************************************************************************************
-  Configures internal module variables and components.
-**************************************************************************************************/
-static void Config()
-{
-    // Initialize the drive speed, set the maximum speed, and set ramp step
-    drive_speed(0, 0);
-    drive_setMaxSpeed(DEFAULT_MAX_SPEED);    
-    // Note: Chris has a question as to whether the ramping needed to be adjusted.  This needs to be addressed.
-    drive_setRampStep(3);
-    
-    MSG_Config();
-    ODOM_Config();
-}
-
-/**************************************************************************************************
-  Wrapper around motion detection.  The only application at this point is to use a PIR sensor and 
-  let the robot monitor motion to decide whether it should turn on.  I'm keeping this here for
-  now to preserve Chris' original intent, but there is no actual implementation -- the MD module
-  is empty
-**************************************************************************************************/
+//-------------------------------------------------------------------------------------------------
+//  Application
+//-------------------------------------------------------------------------------------------------
 static uint8_t MotionDetected()
 {
-    OpState.motion_detected = MD_Detected();
-    return OpState.motion_detected;
+    return SensorState.motion_detected;    
 }
 
-/**************************************************************************************************
-  Provide control over configuration of the robot.  On start up, the Propeller firmware requires
-  two pieces of information: drive geometry and operational state.  When both have been received
-  the Propeller firmware can proceed to the main loop and do robot stuff
-**************************************************************************************************/
 static uint8_t OpStateReceived()
 {
     if (OpState.drive_geometry_received && 
@@ -486,48 +468,146 @@ static uint8_t OpStateReceived()
     }
 }
 
-/**************************************************************************************************
-  Kicks of the Odometry processing and enters the main control loop
-**************************************************************************************************/
-static void ControlLoop()
+static void Init()
 {
-    float left_speed;
-    float right_speed;
+    InitI2C();
     
-    ODOM_Start();
-
-    while (1)
-    {
-        ProcessIncomingMessages();
-        CheckEnvironment();
-        CalculateLeftRightSpeed(&left_speed, &right_speed);
-        ApplyLeftRightSpeed(left_speed, right_speed);
-        SendStatusMessages();
-    }
+    memset(&OpState, 0, sizeof(OpState));
+    memset(&OdomState, 0, sizeof(OdomState));
+    memset(&SensorState, 0, sizeof(SensorState));
+    memset(&ImuState, 0, sizeof(ImuState));
+    memset(&SafetyState, 0, sizeof(SafetyState));
+    
+    OpState.max_forward_speed = DEFAULT_MAX_SPEED;
+    OpState.max_reverse_speed = DEFAULT_MAX_SPEED;
 }
 
-/**************************************************************************************************
-  Performs initialization and configuration, enters the Operational State detection loop, and 
-  subsequently continues on to the control loop
-**************************************************************************************************/
+static void Config()
+{
+    // Initialize the drive speed, set the maximum speed, and set ramp step
+    drive_speed(0, 0);
+    drive_setMaxSpeed(DEFAULT_MAX_SPEED);    
+    // Note: Chris has a question as to whether the ramping needed to be adjusted.  This needs to be addressed.
+    drive_setRampStep(3);
+}
+
+static void Start()
+{
+    MessageStart();
+    OdomStart();
+    SensorsStart();
+
+    // The Parallax motor driver modules are a bit finicky about power on and sensing the appropriate
+    // signal from the Arlo motor drivers.  Experimentally, it has been determined that power shouldn't
+    // be applied to the motor driver modules until about 2 seconds after the Activity board has been 
+    // fired up.  So, we wait for 2 seconds and then turn on the relay that controls the motors.
+    // 
+    // Note: We have current/voltage sensing.  If the sensors are placed between the motor power switch
+    // and the relay we would know if the motor switch is on or off.  If its off, then notify the user
+    // to turn it on.
+    pause(2000);
+    TURN_ON_MOTORS();
+}
+
+static void CheckEnvironment()
+{
+    GetSensorState(&SensorState);
+    UpdateSafety(&SensorState, &SafetyState);
+    #if 0
+    GetImuState(&ImuState);
+    #endif
+    GetOdomState(&OdomState);
+    
+        
+    // Note: There may be a time when the Imu heading will be used, i.e., assigned to the gyro_heading field of OdomState
+    // That could be done here.  First, get ImuState, then OdomState and then assign.
+
+    // Check the safety state to ensure the robot doesn't run into anything
+    // Note: We don't check angular velocity because being able to turn in place is a valuable method getting out of a tough spot.
+    if ( (commanded_linear_velocity > 0 && !SafetyState.safe_to_proceed) || (commanded_linear_velocity < 0 && !SafetyState.safe_to_recede))
+    {
+        commanded_linear_velocity = 0.0;
+        commanded_angular_velocity = 0.0;
+    }        
+
+    // Don't let the robot move unchecked.  At the maximum the robot can move for MAX_NO_SERIAL_COMMS_TIME seconds
+    // If the robot is moving (non-zero speed on left or right wheels) and there has not been serial communication for 
+    // MAX_NO_SERIAL_COMMS_TIME then zero out the velocities
+    if ( OpState.moving && 
+         ((millis() - OpState.serial_timeout) > MAX_NO_SERIAL_COMMS_TIME) )
+    {
+        commanded_linear_velocity = 0.0;
+        commanded_angular_velocity = 0.0;
+    }    
+}
+
+static void UpdateMotorSpeed()
+{
+    float angular_velocity_offset;
+    
+    angular_velocity_offset = commanded_angular_velocity * (track_width * 0.5);
+    
+    if (commanded_linear_velocity > 0) 
+    {
+        // Use max forward speed for rotate in place.
+        if ( (OpState.max_forward_speed * dist_per_count) - fabs(angular_velocity_offset) < commanded_linear_velocity)
+        {
+            commanded_linear_velocity = (OpState.max_forward_speed * dist_per_count) - fabs(angular_velocity_offset);
+        }        
+    } 
+    else if (commanded_linear_velocity < 0)
+    { 
+        // Use max reverse speed for reverse movement.
+
+        // In theory ROS never requests a negative angular velocity, only teleop
+        if ( -((OpState.max_reverse_speed * dist_per_count) - fabs(angular_velocity_offset)) > commanded_linear_velocity)
+        {
+            commanded_linear_velocity = -((OpState.max_reverse_speed * dist_per_count) - fabs(angular_velocity_offset));
+        }            
+    }
+    
+    left_speed = (commanded_linear_velocity - angular_velocity_offset)/dist_per_count;
+    right_speed = (commanded_linear_velocity + angular_velocity_offset)/dist_per_count;
+    
+    // Use the left/right speed to determine if the robot is moving
+    OpState.moving = 0;
+    if (left_speed > 0 || right_speed > 0 || left_speed < 0 || right_speed < 0)
+    {
+        OpState.moving = 1;
+    }
+          
+    drive_speed(left_speed, right_speed);
+}
+
 int main()
 {
     Init();
     Config();
-
-    MSG_Start();
+    Start();
     
-    // If motion is detected then notify ROS to transmit the Operational State and startup the Robot
-    // If the Operational State is transmitted independent of motion, then startup the Robot
+    // Run this loop waiting for either motion detected, e.g., something triggering the robot to wake up, 
+    // or the PC has sent operational state configuration information, i.e., the robot is ready to do something
+    // Note: Run this loop every 1 second so as to not overwhelm the serial port with junk.
     while (!MotionDetected() && !OpStateReceived())
     {
         ProcessIncomingMessages();
+        CheckEnvironment();
         SendStatusMessages();
-        Wait(INIT_LOOP_WAIT_TIME);
+        pause(INIT_LOOP_WAIT_TIME);        
     };
+
+    // We're ready to do something, enable odometry and sensors
+    ENABLE_ODOM();
+    ENABLE_SENSORS();
     
-    ControlLoop();
+    // Run the main loop
+    while (1)
+    {
+        ProcessIncomingMessages();
+        CheckEnvironment();
+        UpdateMotorSpeed();
+        SendStatusMessages();
+    }
+    
+    
 }
-/*************************************************************************************************
-EOF
-*/

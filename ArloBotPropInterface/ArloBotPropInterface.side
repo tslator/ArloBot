@@ -1,12 +1,11 @@
 ArloBotPropInterface.c
+-L ./../ArloBotParallaxLibraries/libarlodrive
+sensors.c -> sensors.c
 message.c -> message.c
+utils.c -> utils.c
 odom.c -> odom.c
-motiondetect.c -> motiondetect.c
-infrared.c -> infrared.c
-ultrasonic.c -> ultrasonic.c
-sensormux.c -> sensormux.c
-newmcp3208.c -> newmcp3208.c
-HCSR04.c -> HCSR04.c
+safety.c -> safety.c
+i2cbus.c -> i2cbus.c
 >compiler=C
 >memtype=cmm main ram compact
 >optimize=-Os
