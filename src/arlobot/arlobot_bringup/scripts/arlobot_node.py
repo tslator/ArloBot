@@ -189,7 +189,7 @@ class ArlobotNode(object):
 
 
         # Subscriptions
-        rospy.Subscriber("cmd_vel", Twist, self._handle_velocity_command)  # Is this line or the below bad redundancy?
+        rospy.Subscriber("cmd_vel", Twist, self._handle_velocity_command)
 
         # Publishers
         self._pirPublisher = rospy.Publisher('~pirState', Bool, queue_size=1)
@@ -655,6 +655,7 @@ class ArlobotNode(object):
             omega = twist_command.angular.z  # rad/s
 
         try:
+            #rospy.loginfo("Sending move: " + str(v) + "," + str(omega))
             msg = SerialMessage(SerialMessage.ACTION_MOVE_COMMAND, [v, omega])
         except SerialMessageError as sme:
             rospy.logfatal("FATAL: " + str(sme))
