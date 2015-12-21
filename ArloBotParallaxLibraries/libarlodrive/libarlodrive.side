@@ -9,11 +9,11 @@ ramp.c
 servoPins.c
 trimset.c
 >compiler=C
->memtype=cmm main ram compact
+>memtype=xmmc external flash code main ram data
 >optimize=-Os
 >-m32bit-doubles
 >-Wall
 >-fno-exceptions
 >defs::-std=c99
 >-create_library
->BOARD::ACTIVITYBOARD
+>BOARD::ACTIVITYBOARD-SDXMMC

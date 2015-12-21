@@ -46,7 +46,6 @@ class SerialMessage():
     CONFIG_OP_STATE_COMMAND_PAYLOAD_LENGTH = 8
     ACTION_MOVE_COMMAND_PAYLOAD_LENGTH = 2
 
-
     def __str__(self):
         return "Class: {}, Type: {}, Payload: {}, Msg: {}".format(self.msg_class, self.msg_type, str(self.payload), self.msg)
 
@@ -221,6 +220,40 @@ class SerialMessage():
                     pass
                 else:
                     raise SerialMessageError("ERROR: Digital IR message - Expected {} parameters, received {}".format(self.STATUS_DIGITAL_IR_SENSOR_PAYLOAD_LENGTH, len(self.payload)))
+                pass
+
+            # Parse the Infrared Sensor data
+            elif msg_type == 'i':
+                self.msg_type = self.STATUS_ANALOG_IR_SENSOR_MESSAGE
+
+                self.payload = msg_data.split(',')
+                if len(self.payload) == self.STATUS_ANALOG_IR_SENSOR_PAYLOAD_LENGTH:
+                    pass
+                else:
+                    raise SerialMessageError("Wrong number of parameters for Analog IR message")
+                pass
+            
+            # Parse the Ultrasonic Sensor data
+            elif msg_type == 'u':
+                self.msg_type = self.STATUS_ULTRASONIC_SENSOR_MESSAGE
+                
+                self.payload = msg_data.split(',')
+                if len(self.payload) == self.STATUS_ULTRASONIC_SENSOR_PAYLOAD_LENGTH:
+                    # Nothing else to do, unless there is a need to create other representations
+                    # of the sensors values, e.g., a dictionary
+                    pass
+                else:
+                    raise SerialMessageError("Wrong number of parameters for Ultrasonic message")
+                pass
+
+            elif msg_type == 'g':
+                self.msg_type = self.STATUS_DIGITAL_IR_SENSOR_MESSAGE
+
+                self.payload = msg_data.split(',')
+                if len(self.payload) == self.STATUS_DIGITAL_IR_SENSOR_PAYLOAD_LENGTH:
+                    pass
+                else:
+                    raise SerialMessageError("Wrong number of parameters for Analog IR message")
                 pass
 
 
