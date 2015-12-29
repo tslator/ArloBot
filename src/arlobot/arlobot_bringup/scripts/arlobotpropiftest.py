@@ -2,8 +2,8 @@ from __future__ import print_function
 __author__ = 'Tim'
 
 import time
-from SerialDataGateway import SerialDataGateway
-from SerialMessage import SerialMessage, SerialMessageError
+from serial_data_gateway import SerialDataGateway
+from serial_msg import SerialMessage, SerialMessageError
 
 from sys import platform as _platform
 

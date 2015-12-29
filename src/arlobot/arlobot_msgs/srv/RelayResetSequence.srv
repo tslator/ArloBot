@@ -1,0 +1,5 @@
+string Name
+uint32 Delay
+---
+bool ActualState
+bool Success

@@ -5,7 +5,7 @@
  -->
 <launch>
   <!-- Turtlebot Driver -->
-  <node pkg="arlobot_bringup" type="propellerbot_node.py" name="arlobot" respawn="true" args="--respawnable">
+  <node pkg="arlobot_bringup" type="arlobot_node.py" name="arlobot" respawn="true" args="--respawnable">
     <param name="bonus" value="false" />
     <param name="update_rate" value="30.0" />
     <remap from="cmd_vel" to="mobile_base/commands/velocity" />
@@ -15,7 +15,7 @@
     <rosparam file="$(env HOME)/.arlobot/arlobot.yaml" command="load" />
   </node>
 
-  <!-- Remember to broadcast base_link to odom Transform from propellerbot_node when robot_pose_ekf is not used -->
+  <!-- Remember to broadcast base_link to odom Transform from arlobot_node when robot_pose_ekf is not used -->
 
   <!-- velocity commands multiplexer -->
   <node pkg="nodelet" type="nodelet" name="mobile_base_nodelet_manager" args="manager"/>

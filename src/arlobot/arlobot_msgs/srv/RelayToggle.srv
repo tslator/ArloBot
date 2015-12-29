@@ -1,0 +1,4 @@
+string Name
+---
+bool Actual_State
+bool Success

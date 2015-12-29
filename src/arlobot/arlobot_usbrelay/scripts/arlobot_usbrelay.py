@@ -14,249 +14,198 @@ from std_msgs.msg import Bool
 from arlobot_msgs.msg import usbRelayStatus
 from arlobot_msgs.srv import *
 
-#For USB relay board
-from pylibftdi import BitBangDevice
-from pylibftdi import Driver # Required to get serial number of unknown USB Relay device.
+from usb_to_gpio import UsbToGpio, UsbToGpioError
 
-# From:
-# ----------------------------------------------------------------------------
-#
-#   DRCONTROL.PY
-#
-#   Copyright (C) 2012 Sebastian Sjoholm, sebastian.sjoholm@gmail.com
-#
-#   This program is free software: you can redistribute it and/or modify
-#   it under the terms of the GNU General Public License as published by
-#   the Free Software Foundation, either version 3 of the License, or
-#   (at your option) any later version.
-#
-#   This program is distributed in the hope that it will be useful,
-#   but WITHOUT ANY WARRANTY; without even the implied warranty of
-#   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#   GNU General Public License for more details.
-#
-#   You should have received a copy of the GNU General Public License
-#   along with this program.  If not, see <http://www.gnu.org/licenses/>.
-#
-#   Version history can be found at
-#   http://code.google.com/p/drcontrol/wiki/VersionHistory
-#
-#   $Rev$
-#   $Date$
-#
-# ----------------------------------------------------------------------------
-# For SainSmart 8 port USB model http://www.sainsmart.com/sainsmart-4-channel-12-v-usb-relay-board-module-controller-for-automation-robotics-1.html
-class relay_data(dict):
 
-    address = {
-            "1":"1",
-            "2":"2",
-            "3":"4",
-            "4":"8",
-            "5":"10",
-            "6":"20",
-            "7":"40",
-            "8":"80",
-            "all":"FF"
-            }
-
-    def __getitem__(self, key): return self[key]
-    def keys(self): return self.keys()
-
-# ----------------------------------------------------------------------------
-# testBit() returns a nonzero result, 2**offset, if the bit at 'offset' is one.
-# http://wiki.python.org/moin/BitManipulation
-# ----------------------------------------------------------------------------
-
-def testBit(int_type, offset):
-    mask = 1 << offset
-    return(int_type & mask)
-
-# ----------------------------------------------------------------------------
-# LIST_DEVICES()
-#
-# Routine modified from the original pylibftdi example by Ben Bass
-# ----------------------------------------------------------------------------
-
-def list_devices():
-    print "Vendor\t\tProduct\t\t\tSerial"
-    dev_list = []
-    for device in Driver().list_devices():
-        device = map(lambda x: x.decode('latin1'), device)
-        vendor, product, serial = device
-        print "%s\t\t%s\t\t%s" % (vendor, product, serial)
-
-def return_device_serial_number():
-    #print "Vendor\t\tProduct\t\t\tSerial"
-    dev_list = []
-    for device in Driver().list_devices():
-        device = map(lambda x: x.decode('latin1'), device)
-        vendor, product, serial = device
-        #print "%s\t\t%s\t\t%s" % (vendor, product, serial)
-    return serial
-
-# For SainSmart 8 port USB model http://www.sainsmart.com/sainsmart-4-channel-12-v-usb-relay-board-module-controller-for-automation-robotics-1.html
-def get_relay_state( data, relay ):
-    if relay == "1":
-        return testBit(data, 0)
-    if relay == "2":
-        return testBit(data, 1)
-    if relay == "3":
-        return testBit(data, 2)
-    if relay == "4":
-        return testBit(data, 3)
-    if relay == "5":
-        return testBit(data, 4)
-    if relay == "6":
-        return testBit(data, 5)
-    if relay == "7":
-        return testBit(data, 6)
-    if relay == "8":
-        return testBit(data, 7)
+class UsbRelayError(Exception):
+    pass
 
 class UsbRelay(object):
     '''
     Helper class for communicating with a Propeller board over serial port
     '''
 
+    class RelayIo:
+        RelayPin = -1
+        StatusPin = -1
+        CommandedState = False
+        ActualState = False
+        LastState = False
+
+        def __init__(self, relay_pin, status_pin, initial_state):
+            self.RelayPin = relay_pin
+            self.StatusPin = status_pin
+            self.CommandedState = initial_state
+            self.ActualState = initial_state
+            self.LastState = initial_state
+
+
+    # Define the relays and status that are supported by this service
+    #
+    #   * Activity board power
+    #   * Left Motor power
+    #   * Right Motor power
+    #   * Activity board status
+    #   * Left Motor status
+    #   * Right Motor status
+
+    NUM_RELAYS = 8
+
+    ACTIVITY_BOARD_RELAY_PIN = UsbToGpio.PIN_C0
+    LEFT_MOTOR_RELAY_PIN = UsbToGpio.PIN_C1
+    RIGHT_MOTOR_RELAY_PIN = UsbToGpio.PIN_C1
+    ACTIVITY_BOARD_STATUS_PIN = UsbToGpio.PIN_C2
+    LEFT_MOTOR_STATUS_PIN = UsbToGpio.PIN_C3
+    RIGHT_MOTOR_STATUS_PIN = UsbToGpio.PIN_C4
+
+
+
     def __init__(self):
         rospy.init_node('arlobot_usbrelay')
-        # http://wiki.ros.org/rospy_tutorials/Tutorials/WritingPublisherSubscriber
-        self.r = rospy.Rate(0.25) # 1hz refresh rate
-        #self.r = rospy.Rate(1) # 1hz refresh rate
 
-        # Prevent overlapping calls to the serial port
-        self._Busy = False
+        # http://wiki.ros.org/rospy_tutorials/Tutorials/WritingPublisherSubscriber
+        self.r = rospy.Rate(0.25) # 4hz refresh rate
 
         # Wait for the arlobot_bringup launch file to initiate the usbRelayInstalled parameter before starting:
         while not rospy.has_param('/arlobot/usbRelayInstalled') and not rospy.is_shutdown():
             rospy.loginfo("arlobot_bringup not started yet, waiting . . .")
             rospy.sleep(1)
 
-        self.relayExists = rospy.get_param("/arlobot/usbRelayInstalled", False)
-        if self.relayExists:
-            #list_devices()
-            #NOTE: This will return the LAST device, so if you have multiple USB Relay boards this will have to be modified
-            self.relaySerialNumber = return_device_serial_number()
+        self._relay_exists = rospy.get_param("/arlobot/usbRelayInstalled", False)
+        if self._relay_exists:
 
+            try:
+                self._usb_to_gpio = UsbToGpio()
+            except UsbToGpioError as utge:
+                raise UsbRelayError("FATAL: Unable to instantiate UsbToGpio", utge)
+
+            self._relay_io_map = {"Activity Board" : RelayIo(self.ACTIVITY_BOARD_RELAY_PIN, self.ACTIVITY_BOARD_STATUS_PIN, False),
+                                  "Left Motor"     : RelayIo(self.LEFT_MOTOR_RELAY_PIN, self.LEFT_MOTOR_RELAY_PIN, False),
+                                  "Right Motor"    : RelayIo(self.RIGHT_MOTOR_RELAY_PIN, self.RIGHT_MOTOR_RELAY_PIN, False)
+                                 }
+
+            # Create a service that can be called to toggle any relay by name:
+            # http://wiki.ros.org/ROS/Tutorials/CreatingMsgAndSrv
+            # http://wiki.ros.org/ROS/Tutorials/WritingServiceClient%28python%29
+            relayToggle = rospy.Service('~relay_toggle', RelayToggle, self._RelayToggle)
+            relaySetState = rospy.Service('~relay_set_state', RelaySetState, self._RelaySetState)
+            relayResetSeq = rospy.Service('~relay_reset_seq', RelayResetSequence, self._RelayResetSequence)
+            relayEnum = rospy.Service('~enum_relay', RelayEnumerate, self._RelayEnumerate)
+
+            # Publishers
+            self._usbRelayStatusPublisher = rospy.Publisher('~usbRelayStatus', usbRelayStatus, queue_size=1)
         else:
             rospy.loginfo("No USB Relay board installed.")
 
-        # Create a service that can be called to toggle any relay by name:
-        # http://wiki.ros.org/ROS/Tutorials/CreatingMsgAndSrv
-        # http://wiki.ros.org/ROS/Tutorials/WritingServiceClient%28python%29
-        relayToggle = rospy.Service('~toggle_relay', ToggleRelay, self._ToggleRelayByName)
-        relayFind = rospy.Service('~find_relay', FindRelay, self._FindRelayByName)
+    def __set_state(self, io, state):
+        '''
+        Descript: Internal routine to set the relay state, update the state variables, and return success or failure
+        :param io: the Relay IO state variable
+        :param state: the state to which the Relay is to be set
+        :return: True if the actual and commanded states are equal; otherwise False
+        '''
+        io.LastState = io.CommandedState
+        io.CommandedState = state
+        self._usb_to_gpio.SetOutput(io.RelayPin, io.CommandedState)
+        io.ActualState = self._usb_to_gpio.GetInput(io.StatusPin)
 
-        # Publishers
-        self._usbRelayStatusPublisher = rospy.Publisher('~usbRelayStatus', usbRelayStatus, queue_size=1) # for publishing status of USB Relays
+        if io.ActualState == io.CommandedState:
+            return True
+        else:
+            return False
 
-    def _FindRelayByName(self, req):
-        # This function will return the relay number for a given name based on the usbrelay.yaml loaded parameters
-        # In theory any node can do this, but it helps to make this service available, since the topic we publish requires
-        # You to know the number of the relay to figure out which array entry is the one you want.
-        boardExists = False
-        foundRelay = False
-        relayNumber = 0
-        if self.relayExists and not rospy.is_shutdown():
-            if self.relayExists: # Do not do this if no relay exists.
-                # Toggle Relay
-                boardExists = True
-                for i in range(1,9): # Walk the relays to find the one with the right name.
-                    relayEnabled = rospy.get_param("~relay" + str(i) + "enabled", False)
-                    if relayEnabled: # Do not touch (poll or anything) Relays that are not listed as enabled.
-                        relayLabel = rospy.get_param("~relay" + str(i) + "label", "No Label")
-                        if relayLabel == req.relay:
-                            foundRelay = True
-                            relayNumber = i
-        return(boardExists, foundRelay, relayNumber)
+    def _RelayToggle(self, req):
+        '''
+        Description: Exposes a service toggle method for changing the state of the relay
+        :param req: the relay description
+        :return: the actual state and whether the change was successful
+        '''
+        if self._relay_exists:
+            io = self._relay_io_map[req.Name]
+            success = self.__set_state(io, io.CommandedState ^ True)
+            return (io.ActualState, success)
+        else:
+            return (False, True)
 
-    def _ToggleRelayByName(self, req):
-        boardExists = False
-        foundRelay = False
-        toggleSuccess = False
-        if self.relayExists: # Do not do this if no relay exists.
-            # Toggle Relay
-            boardExists = True
-            for i in range(1,9): # Walk the relays to find the one with the right name.
-                relayEnabled = rospy.get_param("~relay" + str(i) + "enabled", False)
-                if relayEnabled: # Do not touch (poll or anything) Relays that are not listed as enabled.
-                    relayLabel = rospy.get_param("~relay" + str(i) + "label", "No Label")
-                    if relayLabel == req.relay:
-                        foundRelay = True
-                        while self._Busy: # Prevent simultaneous polling of serial port by multiple processes within this app due to ROS threading.
-                            rospy.loginfo("BitBangDevice Busy . . .")
-                            rospy.sleep(0.4)
-                        self._Busy = True
-                        rospy.loginfo("Changing relay " + str(self.relaySerialNumber) + " to " + str(req.state))
-                        if req.state:
-                            BitBangDevice(self.relaySerialNumber).port |= int(relay_data.address[str(i)], 16)
-                            #BitBangDevice(relaySerialNumber).port |= int(relay.address[leftMotorRelay], 16)
-                        elif not req.state:
-                            BitBangDevice(self.relaySerialNumber).port &= ~int(relay_data.address[str(i)], 16)
-                        checkState = get_relay_state( BitBangDevice(self.relaySerialNumber).port, str(i) )
-                        self._Busy = False
-                        if checkState == 0:
-                            newState = False
-                        else:
-                            newState = True
-                        if newState == req.state:
-                            toggleSuccess = True
-        return(boardExists, foundRelay, toggleSuccess)
+    def _RelaySetState(self, req):
+        '''
+        Description: Exposes a service set state method for setting the state of the relay
+        :param req: the relay description
+        :return: the actual state and whether the change was successful
+        '''
+        if self._relay_exists:
+            io = self._relay_io_map[req.Name]
+            success = self.__set_state(io, req.State)
+            return (io.ActualState, success)
+        else:
+            return (False, True)
+
+    def _RelayResetSequence(self, req):
+        '''
+        Description: Exposes a service relay reset sequence for resetting a device connected to a relay
+        :param req: the relay description and a delay time
+        :return: the actual state and whether the change was successful
+        '''
+        if self._relay_exists:
+            io = self._relay_io_map[req.Name]
+
+            success = self.__set_state(io, False)
+            if success:
+                rospy.sleep(req.Delay)
+                success = self.__set_state(io, True)
+
+            return (io.ActualState, success)
+
+        else:
+            return (False, True)
+
+
+    def _RelayEnumerate(self):
+        '''
+        Description: Exposes a service relay enumeration method for getting the list of supported relays
+        :return: a list of relay names (keys)
+        '''
+        return self._relay_io_map.keys()
+
 
     def Run(self):
-        # Get and broadcast status of all USB Relays.
+        '''
+        Description: main loop for the service node which performs checking on the change state of the relays and
+                     publishes a message when there is a change
+        :return: None
+        '''
         while not rospy.is_shutdown():
-            relaystatus = usbRelayStatus()
-            relaystatus.relayOn = [False] * 8 # Fill array for use.
-            if self.relayExists: # Only poll if the relay exists.
-                relaystatus.relayPresent = True
-                # Gather USB Relay status for each relay and publish
-                for i in range(1,9):
-                    relayEnabled = rospy.get_param("~relay" + str(i) + "enabled", False)
-                    if relayEnabled: # Do not touch (poll or anything) Relays that are not listed as enabled.
-                        relayLabel = rospy.get_param("~relay" + str(i) + "label", "No Label")
-                        while self._Busy: # Prevent simultaneous polling of serial port by multiple processes within this app due to ROS threading.
-                            rospy.loginfo("BitBangDevice Busy . . .")
-                            rospy.sleep(0.2)
-                        self._Busy = True
-                        state = get_relay_state( BitBangDevice(self.relaySerialNumber).port, str(i) )
-                        self._Busy = False
-                        if state == 0:
-                            #print "Relay " + str(i) + " state:\tOFF (" + str(state) + ")"
-                            #print str(i) + " - " + relayLabel + ": OFF"
-                            relaystatus.relayOn[i-1] = False
-                        else:
-                            #print "Relay " + str(i) + " state:\tON (" + str(state) + ")"
-                            #print str(i) + " - " + relayLabel + ": ON"
-                            relaystatus.relayOn[i-1] = True
-            else: # If the relay does not exist just broadcast "False" to everything.
-                relaystatus.relayPresent = False
-            self._usbRelayStatusPublisher.publish(relaystatus) # Publish USB Relay status
+            relay_status = usbRelayStatus()
+
+            if self._relay_exists:
+                for key, io in self._relay_io_map.iteritems():
+                    if not io.LastState is io.CommandedState:
+                        relay_status.Name.append(key)
+                        relay_status.States.append(io.ActualState)
+            else:
+                relay_status.Names = ["Unused"] * self.NUM_RELAYS
+                relay_status.States = [False] * self.NUM_RELAYS
+
+            self._usbRelayStatusPublisher.publish(relay_status) # Publish USB Relay status
             self.r.sleep() # Sleep long enough to maintain the rate set in __init__
 
+
     def Stop(self):
+        '''
+        Description: stop service method called when ROS is shutting down.  Turns off all relays before exiting.
+        :return: None
+        '''
         #rospy.sleep(5) # Give other nodes a chance to clean up before shutting down our services.
         rospy.loginfo("Shutting off all enabled relays . . .")
-        for i in range(1,9): # Walk the relays to find the one with the right name.
-            relayEnabled = rospy.get_param("~relay" + str(i) + "enabled", False)
-            if relayEnabled: # Do not touch (poll or anything) Relays that are not listed as enabled.
-                relayLabel = rospy.get_param("~relay" + str(i) + "label", "No Label")
-                self._Busy = True # We are shutting down, so make everyone else stall and plow ahead:
-                state = get_relay_state( BitBangDevice(self.relaySerialNumber).port, str(i) )
-                if state == 0:
-                    rospy.loginfo(str(i) + " - " + relayLabel + " already OFF")
-                else:
-                    while not state == 0: # Loop if it doesn't shut off.
-                        #print state
-                        BitBangDevice(self.relaySerialNumber).port &= ~int(relay_data.address[str(i)], 16)
-                        state = get_relay_state( BitBangDevice(self.relaySerialNumber).port, str(i) )
-                    rospy.loginfo(str(i) + " - " + relayLabel + " shut OFF by arlobot_usbrelay node.")
+
+        for key, io in self._relay_io_map:
+            self.__set_state(io, False)
+
 
 if __name__ == '__main__':
     node = UsbRelay()
     rospy.on_shutdown(node.Stop)
     try:
         node.Run()
-    except rospy.ROSInterruptException:
+    except (UsbRelayError, rospy.ROSInterruptException):
         node.Stop()

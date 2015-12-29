@@ -42,9 +42,12 @@ class SerialMessage():
     STATUS_DIGITAL_IR_SENSOR_PAYLOAD_LENGTH = 6
     STATUS_OP_STATE_PAYLOAD_LENGTH = 15
 
+    CONFIG_DRIVE_GEOMETRY_COMMAND_PAYLOAD_LENGTH = 2
+    CONFIG_OP_STATE_COMMAND_PAYLOAD_LENGTH = 8
+    ACTION_MOVE_COMMAND_PAYLOAD_LENGTH = 2
 
     def __str__(self):
-        return "Class: {}, Type: {}, Payload: {}".format(self.msg_class, self.msg_type, str(self.payload))
+        return "Class: {}, Type: {}, Payload: {}, Msg: {}".format(self.msg_class, self.msg_type, str(self.payload), self.msg)
 
     def __init__(self, msg_type=UNKNOWN, data=None):
         """
@@ -59,6 +62,8 @@ class SerialMessage():
         # The payload is a list representation of the data contained in the message.  Design decision is to keep the
         # type as list because it is easy to convert it to a string as necessary, typically for printing.
         self.payload = None
+
+        self.msg = ""
 
         # We do this part if we are creating a message from parameters, e.g. a list
         # and we need to create a string that can be sent over the serial port
@@ -127,7 +132,7 @@ class SerialMessage():
                     offset += 1
                     self.omega = self.__float_convert(self.payload[offset])
                 else:
-                    raise SerialMessageError("Wrong number of parameters for Odometry message")
+                    raise SerialMessageError("ERROR: Odometry message - Expected {} parameters, received {}".format("5 to 7", len(self.payload)))
 
             # Parse the Operational State data
             elif msg_type == 'p':
@@ -181,7 +186,41 @@ class SerialMessage():
                     self.floor_obstacle_detected = int(self.payload[offset])
                     offset += 1
                 else:
-                    raise SerialMessageError("Wrong number of parameters for Op State message")
+                    raise SerialMessageError("ERROR: Op State message - Expected {} parameters, received {}".format(self.STATUS_OP_STATE_PAYLOAD_LENGTH, len(self.payload)))
+
+            # Parse the Infrared Sensor data
+            elif msg_type == 'i':
+                self.msg_type = self.STATUS_ANALOG_IR_SENSOR_MESSAGE
+
+                self.payload = msg_data.split(',')
+                if len(self.payload) == self.STATUS_ANALOG_IR_SENSOR_PAYLOAD_LENGTH:
+                    pass
+                else:
+                    raise SerialMessageError("ERROR: Ultrasonic message - Expected {} parameters, received {}".format(self.STATUS_ANALOG_IR_SENSOR_PAYLOAD_LENGTH, len(self.payload)))
+                pass
+            
+            # Parse the Ultrasonic Sensor data
+            elif msg_type == 'u':
+                self.msg_type = self.STATUS_ULTRASONIC_SENSOR_MESSAGE
+                
+                self.payload = msg_data.split(',')
+                if len(self.payload) == self.STATUS_ULTRASONIC_SENSOR_PAYLOAD_LENGTH:
+                    # Nothing else to do, unless there is a need to create other representations
+                    # of the sensors values, e.g., a dictionary
+                    pass
+                else:
+                    raise SerialMessageError("ERROR: Ultrasonic message - Expected {} parameters, received {}".format(self.STATUS_ULTRASONIC_SENSOR_PAYLOAD_LENGTH, len(self.payload)))
+                pass
+
+            elif msg_type == 'g':
+                self.msg_type = self.STATUS_DIGITAL_IR_SENSOR_MESSAGE
+
+                self.payload = msg_data.split(',')
+                if len(self.payload) == self.STATUS_DIGITAL_IR_SENSOR_PAYLOAD_LENGTH:
+                    pass
+                else:
+                    raise SerialMessageError("ERROR: Digital IR message - Expected {} parameters, received {}".format(self.STATUS_DIGITAL_IR_SENSOR_PAYLOAD_LENGTH, len(self.payload)))
+                pass
 
             # Parse the Infrared Sensor data
             elif msg_type == 'i':
@@ -221,18 +260,35 @@ class SerialMessage():
     def _parse_list_msg(self, data):
         if self.msg_type == self.CONFIG_DRIVE_GEOMETRY_COMMAND:
             self.msg_class = self.CONFIG_CLASS
-            # There should be a validation of the number of elements in data for this message
-            self.msg = 'c:d:'+','.join(map(str, data))+'\r'
+
+            if len(data) != self.CONFIG_DRIVE_GEOMETRY_COMMAND_PAYLOAD_LENGTH:
+                raise SerialMessageError("ERROR: Drive Geometry Command - Expected {} parameters, received {}".format(self.CONFIG_DRIVE_GEOMETRY_COMMAND_PAYLOAD_LENGTH, len(data)))
+
+            self.payload = []
+            for entry in data:
+                self.payload.append("%.3f" % entry)
+
+            self.msg = 'c:d:'+','.join(self.payload)+'\r'
 
         elif self.msg_type == self.CONFIG_OP_STATE_COMMAND:
             self.msg_class = self.CONFIG_CLASS
-            # There should be a validation of the number of elements in data for this message
+
+            if len(data) != self.CONFIG_OP_STATE_COMMAND_PAYLOAD_LENGTH:
+                raise SerialMessageError("ERROR: Drive Geometry Command - Expected {} parameters, reeived {}".format(self.CONFIG_OP_STATE_COMMAND_PAYLOAD_LENGTH, len(data)))
+
             self.msg = 'c:p:'+','.join(map(str, data))+'\r'
 
         elif self.msg_type == self.ACTION_MOVE_COMMAND:
             self.msg_class = self.ACTION_CLASS
-            # There should be a validation of the number of elements in data for this message
-            self.msg = 'a:m:'+','.join(map(str, data))+'\r'
+
+            if len(data) != self.ACTION_MOVE_COMMAND_PAYLOAD_LENGTH:
+                raise SerialMessageError("ERROR: Drive Geometry Command - Expected {} parameters, reeived {}".format(self.ACTION_MOVE_COMMAND_PAYLOAD_LENGTH, len(data)))
+
+            self.payload = []
+            for entry in data:
+                self.payload.append("%.3f" % entry)
+
+            self.msg = 'a:m:'+','.join(self.payload)+'\r'
 
     def _is_valid(self, data):
         # Add a regular expression to test the format <group1>:<group2>:<group3>
