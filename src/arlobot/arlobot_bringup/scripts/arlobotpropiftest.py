@@ -38,22 +38,36 @@ operational_state = SerialMessage(SerialMessage.CONFIG_OP_STATE_COMMAND, [0,0,0,
 dataReceiver = None
 configured = False
 safety_enable = True
+enable_op_state_print = False
 enable_odometry_print = False
+enable_analog_ir_sensor_print = False
+enable_digital_ir_sensor_print = False
+enable_ultrasonic_sensor_print = False
 
 def ShowOpState():
-    print(op_state)
+    global enable_op_state_print
+    if enable_op_state_print:
+        print(op_state, end='\r')
 
 def ShowOdometry():
-    print(odometry)
+    global enable_odometry_print
+    if enable_odometry_print:
+        print(odometry, end='\r')
 
 def ShowAnalogIRSensors():
-    print(analog_ir_sensor)
+    global enable_analog_ir_sensor_print
+    if enable_analog_ir_sensor_print:
+        print(analog_ir_sensor, end='\r')
 
 def ShowDigitalIRSensors():
-    print(digital_ir_sensor)
+    global enable_digital_ir_sensor_print
+    if enable_digital_ir_sensor_print:
+        print(digital_ir_sensor, end='\r')
 
 def ShowUltrasonicSensors():
-    print(ultrasonic_sensor)
+    global enable_ultrasonic_sensor_print
+    if enable_ultrasonic_sensor_print:
+        print(ultrasonic_sensor, end='\r')
 
 def ToggleSafety():
     global safety_enable
@@ -112,9 +126,15 @@ def DoMove(vel):
     dataReceiver.Write(move.msg)
 
 def Test(num):
+    global enable_odometry_print
+    global enable_ultrasonic_sensor_print
+
+    print("\n")
+
     if num == 1:
         print("Move forward, Move backward")
         print("Moving forward ...")
+        enable_odometry_print = True
         DoMove("0.3,0.0")
         time.sleep(1.0)
         DoMove("0.3,0.0")
@@ -125,9 +145,11 @@ def Test(num):
         time.sleep(1.0)
         DoMove("-0.3,0.0")
         time.sleep(1.0)
+        enable_odometry_print = False
     elif num == 2:
         print("Rotate Left, Rotate Right")
         print("Rotating left ...")
+        enable_odometry_print = True
         DoMove("0.0,1.0")
         time.sleep(1.0)
         DoMove("0.0,1.0")
@@ -138,6 +160,7 @@ def Test(num):
         time.sleep(1.0)
         DoMove("0.0,-1.0")
         time.sleep(1.0)
+        enable_odometry_print = False
 
 last_time = int(round(time.time() * 1000))
 delta = 0;
@@ -169,6 +192,7 @@ def _handle_received_line(line):
         #print("Class: ", msg.msg_class, " Type: ", msg.msg_type, " Msg: ", msg.msg)
         if msg.msg_type == SerialMessage.STATUS_OP_STATE_MESSAGE:
             op_state = line
+            ShowOpState()
 
             if not msg.drive_geometry_received:
                 print("Sending drive geometry")
@@ -191,17 +215,16 @@ def _handle_received_line(line):
 
         elif msg.msg_type == SerialMessage.STATUS_ODOMETRY_MESSAGE:
             odometry = line
-            if enable_odometry_print:
-                print(delta, ": ", odometry)
+            ShowOdometry()
         elif msg.msg_type == SerialMessage.STATUS_ANALOG_IR_SENSOR_MESSAGE:
             analog_ir_sensor = line
-            #print(delta, ": ", analog_ir_sensor)
+            ShowAnalogIRSensors()
         elif msg.msg_type == SerialMessage.STATUS_DIGITAL_IR_SENSOR_MESSAGE:
             digital_ir_sensor = line
-            #print(delta, ": ", digital_ir_sensor)
+            ShowDigitalIRSensors()
         elif msg.msg_type == SerialMessage.STATUS_ULTRASONIC_SENSOR_MESSAGE:
             ultrasonic_sensor = line
-            #print(delta, ": ", ultrasonic_sensor)
+            ShowUltrasonicSensors()
         else:
             print("Unknown type: ", line)
 
@@ -222,7 +245,11 @@ def main():
     global analog_ir_sensor
     global digital_ir_sensor
     global ultrasonic_sensor
+    global enable_op_state_print
     global enable_odometry_print
+    global enable_analog_ir_sensor_print
+    global enable_digital_ir_sensor_print
+    global enable_ultrasonic_sensor_print
 
     dataReceiver = SerialDataGateway(PORT, 115200, _handle_received_line)
     dataReceiver.Start()
@@ -247,15 +274,15 @@ def main():
         print("    Exit - x")
         result = input("Enter a command: ")
         if result == 's':
-            ShowOpState()
+            enable_op_state_print = True
         elif result == 'o':
-            ShowOdometry()
+            enable_odometry_print = True
         elif result == 'i':
-            ShowAnalogIRSensors()
+            enable_analog_ir_sensor_print = True
         elif result == 'g':
-            ShowDigitalIRSensors()
+            enable_digital_ir_sensor_print = True
         elif result == 'u':
-            ShowUltrasonicSensors()
+            enable_ultrasonic_sensor_print = True
         elif result == 'y':
             ToggleSafety()
             print(op_state)
@@ -266,12 +293,16 @@ def main():
             enable_odometry_print = False
         elif 't' in result:
             cmd, num = result.split(':')
-            enable_odometry_print = True
             Test(int(num))
-            enable_odometry_print = False
         elif result == 'x':
             DoMove("0.0,0.0")
             done = True
+        elif result == 'q':
+            enable_odometry_print = False
+            enable_analog_ir_sensor_print = False
+            enable_digital_ir_sensor_print = False
+            enable_ultrasonic_sensor_print = False
+
 
     dataReceiver.Stop()
 

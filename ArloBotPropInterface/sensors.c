@@ -73,19 +73,20 @@ static uint16_t SPIReadADC(uint8_t channel)
 }
 #endif
 
-static uint16_t I2CReadADC(uint8_t channel)
+static uint16_t I2CReadADC(uint8_t addr, uint8_t channel)
 {
     const uint8_t CHANNEL[8] = {0x8C,0xCC,0x9C,0xDC,0xAC,0xEC,0xBC,0xFC};
-    uint8_t a2d_valueH;
-    uint8_t a2d_valueL;
 
-    // Note: Passing 0 means no register
-    I2C_ByteWrite(AD7828_ADDR, 0, CHANNEL[channel]);
-    pause(100);
-    I2C_ByteRead(AD7828_ADDR, 0, &a2d_valueH);    
-    I2C_ByteRead(AD7828_ADDR, 0, &a2d_valueL);
+    uint8_t a2d_val_high;
+    uint8_t a2d_val_low;
     
-    return (a2d_valueH << 8) + a2d_valueL;
+    // Note: Passing 0 means no register
+    I2C_ByteWrite(addr + AD7827_WRITE_MODIFIER, 0, CHANNEL[channel]);
+    pause(100);
+    I2C_ByteRead(addr + AD7827_READ_MODIFIER, 0, &a2d_val_high);    
+    I2C_ByteRead(addr + AD7827_READ_MODIFIER, 0, &a2d_val_low);
+    
+    return (a2d_val_high << 8) + a2d_val_low;
 }
 
 static float ReadAnalogIr(uint8_t index)
@@ -93,8 +94,13 @@ static float ReadAnalogIr(uint8_t index)
     uint16_t result;
 #ifdef USE_SPI_ADC
     result = SPIReadADC(index);
+#else
+    // Two AD7828 are supported:
+    //     Channels 0 - 7 are assigned to AD7828_ADDR_0
+    //     Channels 8 - 15 are assigned to AD7828_ADDR_1
+    uint8_t addr = index < (NUM_ANALOG_IR_SENSORS/2) ? AD7828_ADDR_0 : AD7828_ADDR_1;
+    result = I2CReadADC(addr, index % NUM_ANALOG_IR_SENSORS);
 #endif
-    result = I2CReadADC(index);
     
     float voltage = ((result + 1) * IR_REF_VOLTAGE * 100) / ADC_RESOLUTION;
     
@@ -168,7 +174,7 @@ static void PollAnalogIRSensors()
     uint8_t ii;
     for (ii = 0; ii < sizeof(SensorState.analog_ir); ++ii)
     {
-        SensorState.analog_ir[ii] = 1000.0;//ReadAnalogIr(ii);
+        SensorState.analog_ir[ii] = ReadAnalogIr(ii);
     }        
 }
     
