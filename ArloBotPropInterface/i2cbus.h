@@ -11,8 +11,8 @@ typedef enum
     AD7828_ADDR_1 = 0x92,
 } I2C_ADDR_t;
 
-#define AD7827_READ_MODIFIER 0x00
-#define AD7827_WRITE_MODIFIER 0x01
+#define AD7827_READ_MODIFIER 0x01
+#define AD7827_WRITE_MODIFIER 0x00
 
 void InitI2C();
 void I2C_ByteRead(I2C_ADDR_t slaveAddress, uint8_t reg, uint8_t* data);

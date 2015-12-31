@@ -1,5 +1,6 @@
 #include <simpletools.h>
 #include <adcDCpropab.h>
+#include <math.h>
 #include "i2cbus.h"
 #include "sensors.h"
 #include "imu.h"
@@ -73,22 +74,6 @@ static uint16_t SPIReadADC(uint8_t channel)
 }
 #endif
 
-static uint16_t I2CReadADC(uint8_t addr, uint8_t channel)
-{
-    const uint8_t CHANNEL[8] = {0x8C,0xCC,0x9C,0xDC,0xAC,0xEC,0xBC,0xFC};
-
-    uint8_t a2d_val_high;
-    uint8_t a2d_val_low;
-    
-    // Note: Passing 0 means no register
-    I2C_ByteWrite(addr + AD7827_WRITE_MODIFIER, 0, CHANNEL[channel]);
-    pause(100);
-    I2C_ByteRead(addr + AD7827_READ_MODIFIER, 0, &a2d_val_high);    
-    I2C_ByteRead(addr + AD7827_READ_MODIFIER, 0, &a2d_val_low);
-    
-    return (a2d_val_high << 8) + a2d_val_low;
-}
-
 static float ReadAnalogIr(uint8_t index)
 {
     uint16_t result;
@@ -99,22 +84,12 @@ static float ReadAnalogIr(uint8_t index)
     //     Channels 0 - 7 are assigned to AD7828_ADDR_0
     //     Channels 8 - 15 are assigned to AD7828_ADDR_1
     uint8_t addr = index < (NUM_ANALOG_IR_SENSORS/2) ? AD7828_ADDR_0 : AD7828_ADDR_1;
-    result = I2CReadADC(addr, index % NUM_ANALOG_IR_SENSORS);
+    result = I2C_ReadADC(addr + AD7827_WRITE_MODIFIER, addr + AD7827_READ_MODIFIER, index % NUM_ANALOG_IR_SENSORS);
 #endif
     
     float voltage = ((result + 1) * IR_REF_VOLTAGE * 100) / ADC_RESOLUTION;
     
-    //http://home.roboticlab.eu/en/examples/sensor/ir_distance
-    #define CONST_A 5461.0
-    #define CONST_B -17.0
-    #define CONST_K 2.0
-        
-    if (voltage + CONST_B <= 0)
-    {
-        return -1;
-    }
- 
-    return CONST_A / (voltage + CONST_B) - CONST_K;
+    return 27.86 * pow(voltage, -1.15);
 }    
 
 static uint8_t ReadDigitalIr(uint8_t index)
