@@ -35,6 +35,7 @@ static float get_adc_volts(uint8_t channel)
     //     Channels 8 - 15 are assigned to AD7828_ADDR_1
     uint8_t addr = channel < (NUM_ANALOG_IR_SENSORS/2) ? AD7828_ADDR_0 : AD7828_ADDR_1;
     uint16_t value = I2C_ReadADC(addr, addr + 1, channel % NUM_ANALOG_IR_SENSORS);
+    print("value: %d\n", value);
     float volts = ((value + 1) * 5.0) / 4096;
     
     return volts;
@@ -43,13 +44,23 @@ static float get_adc_volts(uint8_t channel)
 
 int main()
 {
+  int ii;
+  float dist[6];
   init_adc();
   
   while(1)
   {
-    float value = get_adc_volts(0);
-    float dist = calc_dist(value);
-    print("value: %f, dist: %f\n", value, dist);
-    pause(100);
+    for (ii = 8; ii < 16; ++ii)
+    {
+      float volts = get_adc_volts(ii);
+      dist[ii] = calc_dist(volts);
+    }
+    
+    for (ii = 8; ii < 16; ++ii)
+    {
+      print("%f, ", dist[ii]);
+    }
+    print("\n");
+    pause(1000);
   }  
 }

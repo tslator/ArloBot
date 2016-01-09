@@ -1,6 +1,8 @@
 #include "simpletools.h"
 #include "i2cbus.h"
 
+static const uint8_t ADC_CHANNEL[8] = {0x84,0xC4,0x94,0xD4,0xA4,0xE4,0xB4,0xF4};
+
 static i2c volatile i2c_bus;
 static int lock;
 
@@ -24,8 +26,6 @@ void InitI2C()
 
 uint16_t I2C_ReadADC(uint8_t write_addr, uint8_t read_addr, uint8_t channel)
 {
-    const uint8_t CHANNEL[8] = {0x84,0xC4,0x94,0xD4,0xA4,0xE4,0xB4,0xF4};
-
     uint8_t a2d_val_high;
     uint8_t a2d_val_low;
     
@@ -33,7 +33,7 @@ uint16_t I2C_ReadADC(uint8_t write_addr, uint8_t read_addr, uint8_t channel)
     
     lockset(lock);
     ack = i2c_startpoll(&i2c_bus, write_addr);    
-    ack = i2c_writeByte(&i2c_bus, CHANNEL[0]);
+    ack = i2c_writeByte(&i2c_bus, ADC_CHANNEL[channel]);
     ack = i2c_startpoll(&i2c_bus, read_addr);    
     a2d_val_high = i2c_readByte(&i2c_bus, 0);
     a2d_val_low = i2c_readByte(&i2c_bus, 1);
@@ -50,21 +50,19 @@ uint16_t I2C_ReadADC(uint8_t write_addr, uint8_t read_addr, uint8_t channel)
 //  primitives or figure out how to make the different bus approach play nicely together.  Just a note
 //  to remind you of the details.
 
+#if 0
 uint8_t I2C_Ready(uint8_t addr)
 {
-#if 0
     print("i2c_ready enter\n");
     while (i2c_busy(i2c_bus, addr))
     {
         ;
     }    
     print("i2c_ready exit\n");
-#endif
 }
 
 void I2C_ByteRead(I2C_ADDR_t slaveAddress, uint8_t reg, uint8_t* data)
 {
-#if 0
     uint8_t num_bytes;
     uint8_t size = 0;
     
@@ -81,12 +79,10 @@ void I2C_ByteRead(I2C_ADDR_t slaveAddress, uint8_t reg, uint8_t* data)
     num_bytes = i2c_in(i2c_bus, slaveAddress, reg, size, data, 1);
     lockclr(lock);
     print("\t\tRead addr %02x, reg %02x, data %02x, total %d\n", slaveAddress, reg, *data, num_bytes);
-#endif
 }
 
 void I2C_ByteWrite(I2C_ADDR_t slaveAddress, uint8_t reg, uint8_t data)
 {
-#if 0    
     uint8_t num_bytes;
     uint8_t size = 0;
     
@@ -102,17 +98,15 @@ void I2C_ByteWrite(I2C_ADDR_t slaveAddress, uint8_t reg, uint8_t data)
     }    
     lockclr(lock);
     print("\t\tWrote - addr %02x, reg %02x, data %02x, total %d\n", slaveAddress, reg, data, num_bytes);
-#endif
 }
 
 uint8_t I2CBusy(uint8_t address)
 {
-#if 0
     uint8_t result;
     
     lockset(lock);
     result = i2c_busy(i2c_bus, address);
     lockclr(lock);
     return result;
-#endif
 }
+#endif
