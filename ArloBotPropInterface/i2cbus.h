@@ -15,9 +15,11 @@ typedef enum
 #define AD7827_WRITE_MODIFIER 0x00
 
 void InitI2C();
+uint16_t I2C_ReadADC(uint8_t write_addr, uint8_t read_addr, uint8_t channel);
+#if 0
 void I2C_ByteRead(I2C_ADDR_t slaveAddress, uint8_t reg, uint8_t* data);
 void I2C_ByteWrite(I2C_ADDR_t slaveAddress, uint8_t reg, uint8_t data);
 uint8_t I2CBusy(uint8_t address);
-
+#endif
 
 #endif

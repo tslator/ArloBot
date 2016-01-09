@@ -18,7 +18,7 @@ void adc_init(int csPin, int sclPin, int doPin,int diPin);
 float adc_volts(int channel);
 
 // Note: This is the maximum stack size that still works.  Any bigger and nothing happens.
-static int sensor_stack[40 + 120];
+static int sensor_stack[40 + 136];
 static volatile SENSOR_STATE SensorState;
 #if 0
 static volatile IMU_STATE ImuState;
@@ -92,6 +92,7 @@ static float ReadAnalogIr(uint8_t index)
     return 27.86 * pow(voltage, -1.15);
 }    
 
+#ifdef DIGITAL_IR_SUPPORTED
 static uint8_t ReadDigitalIr(uint8_t index)
 {
     uint32_t pulse;
@@ -120,6 +121,7 @@ static uint8_t ReadDigitalIr(uint8_t index)
     
     return 1;
 }
+#endif
 
 static float ReadUltrasonic(uint8_t addr)
 {
@@ -147,9 +149,17 @@ static float ReadUltrasonic(uint8_t addr)
 static void PollAnalogIRSensors()
 {
     uint8_t ii;
-    for (ii = 0; ii < sizeof(SensorState.analog_ir); ++ii)
+    uint8_t addr = AD7828_ADDR_0;
+    
+    for (ii = 0; ii < NUM_ANALOG_IR_SENSORS; ++ii)
     {
-        SensorState.analog_ir[ii] = ReadAnalogIr(ii);
+        if (ii > 8)
+        {
+          addr = AD7828_ADDR_1;
+        }          
+        uint16_t result = I2C_ReadADC(addr + AD7827_WRITE_MODIFIER, addr + AD7827_READ_MODIFIER, ii);
+        float voltage = ((result + 1) * IR_REF_VOLTAGE * 100) / ADC_RESOLUTION;
+        SensorState.analog_ir[ii] = 27.86 * pow(voltage, -1.15);
     }        
 }
     
@@ -165,21 +175,13 @@ static void PollDigitalIRSensors()
 static void PollUltrasonicSensors()
 {   
     uint8_t ii;
-    for (ii = 0; ii < 7; ++ii)
+    for (ii = 0; ii < sizeof(SensorState.ultrasonic); ++ii)
     {
         SensorState.ultrasonic[ii] = ReadUltrasonic(ii);
     }
-    SensorState.ultrasonic[ii] = 100.0;
-    for (ii = 8; ii < 13; ++ii)
-    {
-        SensorState.ultrasonic[ii] = ReadUltrasonic(ii);
-    }
-    SensorState.ultrasonic[ii++] = 100;
-    SensorState.ultrasonic[ii++] = 100;
-    SensorState.ultrasonic[ii++] = 100;
 }
 
-#if 0
+#ifdef IMU_SUPPORTED
 static void PollImuSensor()
 {
     ReadImu(&ImuState);
@@ -190,7 +192,7 @@ static void PollMotionSensor()
 {
     SensorState.motion_detected = 0;//get_state(MOTION_DETECT);
 }
-
+#ifdef MOTOR_POWER_SUPPORTED
 static void PollMotorPower()
 {
     uint8_t ii;
@@ -224,19 +226,26 @@ static void PollMotorPower()
         }
     }
 }
+#endif
 
 static void PollSensors(void *par)
 {
     while (1)
     {
-        //PollAnalogIRSensors();
+        PollAnalogIRSensors();
+        #ifdef DIGITAL_IR_SUPPORTED
         // Note: There is an issue when this call is enabled.  It could be stack related or it could be that there is no
         // sensor attached.  Will need to debug when digital IR sensors are added.
         //PollDigitalIRSensors(); 
-        PollUltrasonicSensors();
+        #endif
+        //PollUltrasonicSensors();
+        #ifdef IMU_SUPPORTED
         //PollImuSensor();
-        PollMotionSensor();
-        PollMotorPower();
+        #endif
+        //PollMotionSensor();
+        #ifdef MOTOR_POWER_SUPPORTED
+        //PollMotorPower();
+        #endif
     }
 }
 
@@ -257,10 +266,6 @@ void SensorsStart()
     uint8_t ii;
     
     memset(&SensorState, 0, sizeof(SensorState));
-    for (ii = 0; ii < sizeof(SensorState.analog_ir); ++ii)
-    {
-        SensorState.analog_ir[ii] = 1000.0;
-    }
     
     cogstart(&PollSensors, NULL, sensor_stack, sizeof(sensor_stack));
 }

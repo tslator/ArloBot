@@ -47,27 +47,27 @@ enable_ultrasonic_sensor_print = False
 def ShowOpState():
     global enable_op_state_print
     if enable_op_state_print:
-        print(op_state, end='\r')
+        print(op_state, end='\n')
 
 def ShowOdometry():
     global enable_odometry_print
     if enable_odometry_print:
-        print(odometry, end='\r')
+        print(odometry, end='\n')
 
 def ShowAnalogIRSensors():
     global enable_analog_ir_sensor_print
     if enable_analog_ir_sensor_print:
-        print(analog_ir_sensor, end='\r')
+        print(analog_ir_sensor, end='\n')
 
 def ShowDigitalIRSensors():
     global enable_digital_ir_sensor_print
     if enable_digital_ir_sensor_print:
-        print(digital_ir_sensor, end='\r')
+        print(digital_ir_sensor, end='\n')
 
 def ShowUltrasonicSensors():
     global enable_ultrasonic_sensor_print
     if enable_ultrasonic_sensor_print:
-        print(ultrasonic_sensor, end='\r')
+        print(ultrasonic_sensor, end='\n')
 
 def ToggleSafety():
     global safety_enable
@@ -179,7 +179,7 @@ def _handle_received_line(line):
     delta = int(round(time.time() * 1000)) - last_time
     last_time = int(round(time.time() * 1000))
 
-    #print(delta, ": ", line)
+    print(delta, ": ", line)
 
     try:
         msg = SerialMessage(data=line)
