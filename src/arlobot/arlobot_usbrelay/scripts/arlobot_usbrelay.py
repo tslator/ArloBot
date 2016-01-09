@@ -25,7 +25,7 @@ class UsbRelay(object):
     Helper class for communicating with a Propeller board over serial port
     '''
 
-    class RelayIo:
+    class __RelayIo:
         RelayPin = -1
         StatusPin = -1
         CommandedState = False
@@ -52,9 +52,9 @@ class UsbRelay(object):
     NUM_RELAYS = 8
 
     ACTIVITY_BOARD_RELAY_PIN = UsbToGpio.PIN_C0
-    LEFT_MOTOR_RELAY_PIN = UsbToGpio.PIN_C1
-    RIGHT_MOTOR_RELAY_PIN = UsbToGpio.PIN_C1
-    ACTIVITY_BOARD_STATUS_PIN = UsbToGpio.PIN_C2
+    ACTIVITY_BOARD_STATUS_PIN = UsbToGpio.PIN_C1
+    LEFT_MOTOR_RELAY_PIN = UsbToGpio.PIN_C2
+    RIGHT_MOTOR_RELAY_PIN = UsbToGpio.PIN_C2
     LEFT_MOTOR_STATUS_PIN = UsbToGpio.PIN_C3
     RIGHT_MOTOR_STATUS_PIN = UsbToGpio.PIN_C4
 
@@ -79,9 +79,9 @@ class UsbRelay(object):
             except UsbToGpioError as utge:
                 raise UsbRelayError("FATAL: Unable to instantiate UsbToGpio", utge)
 
-            self._relay_io_map = {"Activity Board" : RelayIo(self.ACTIVITY_BOARD_RELAY_PIN, self.ACTIVITY_BOARD_STATUS_PIN, False),
-                                  "Left Motor"     : RelayIo(self.LEFT_MOTOR_RELAY_PIN, self.LEFT_MOTOR_RELAY_PIN, False),
-                                  "Right Motor"    : RelayIo(self.RIGHT_MOTOR_RELAY_PIN, self.RIGHT_MOTOR_RELAY_PIN, False)
+            self._relay_io_map = {"Activity Board" : self.__RelayIo(self.ACTIVITY_BOARD_RELAY_PIN, self.ACTIVITY_BOARD_STATUS_PIN, False),
+                                  "Left Motor"     : self.__RelayIo(self.LEFT_MOTOR_RELAY_PIN, self.LEFT_MOTOR_RELAY_PIN, False),
+                                  "Right Motor"    : self.__RelayIo(self.RIGHT_MOTOR_RELAY_PIN, self.RIGHT_MOTOR_RELAY_PIN, False)
                                  }
 
             # Create a service that can be called to toggle any relay by name:
